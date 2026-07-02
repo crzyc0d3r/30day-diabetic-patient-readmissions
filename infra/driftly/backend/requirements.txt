@@ -1,0 +1,14 @@
+# Driftly backend. Versions pinned to match the rest of the medi-watch stack
+# (see repo-root requirements.txt and infra/inference-api/requirements.txt) so
+# the shared `helpers.drift_sim` math runs against the same numpy/pandas/scipy.
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+pydantic==2.13.3
+pandas==2.3.3
+numpy==2.4.4
+scipy==1.16.3
+# Multipart form parsing for the CSV-upload endpoint (/api/compute/upload).
+python-multipart==0.0.20
+# Postgres-backed run history in the shared mediwatch DB (helpers/db.py's seam).
+SQLAlchemy==2.0.50
+psycopg2-binary==2.9.12

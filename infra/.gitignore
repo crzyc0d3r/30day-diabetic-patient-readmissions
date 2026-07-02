@@ -1,0 +1,7 @@
+airflow/logs/*
+!airflow/logs/.gitkeep
+airflow/plugins/*
+!airflow/plugins/.gitkeep
+
+# Local minikube kubeconfig (embedded certs) mounted into the airflow worker
+airflow/kubeconfig

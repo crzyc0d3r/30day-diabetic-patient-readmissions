@@ -1,0 +1,80 @@
+# Notebook + headless-DAG execution stack for the medi-watch pipeline.
+#
+# This is the canonical pin set used by:
+#   - the local pipeline (pipeline/01..10) when run via `jupyter nbconvert`
+#   - the Airflow retrain DAG worker image
+#   - any CI smoke that re-executes the pipeline end-to-end
+#
+# Four sibling pin sites mirror this one and MUST be kept in lockstep:
+#   - infra/inference-api/requirements.txt        (the FastAPI inference container)
+#   - infra/ray/Dockerfile                        (the Ray worker image used by §7 HPO)
+#   - infra/airflow/requirements.txt              (the Airflow base interpreter image)
+#   - infra/airflow/ray-driver-requirements.txt   (the CPython 3.13.2 venv the
+#                                                  retrain HPO task runs under, the
+#                                                  Ray driver on the same cloudpickle
+#                                                  boundary as the worker image)
+# A version mismatch between these pin sites is the most common cause of
+# "works on my machine, breaks in prod" drift on this project. When you
+# bump anything below, bump it in all five sites in the same change and re-run
+# `python helpers/check_requirements_pins.py` to verify (also enforced by
+# tests/test_requirements_pinning.py in CI).
+pandas==2.3.3
+pandas-stubs==2.2.3.250527
+numpy==2.4.4
+scipy==1.16.3
+matplotlib==3.10.1
+seaborn==0.13.2
+# Effect-size / confidence-interval / adjusted-logistic statistics for the EDA
+# notebook (helpers/eda_stats.py, NB03). EDA-only: not needed by the inference or
+# ray images, so it is pinned here and in infra/airflow/requirements.txt (the two
+# notebook-capable sites), not in all five.
+statsmodels==0.14.6
+joblib==1.5.3
+evidently==0.7.21
+# Modeling
+scikit-learn==1.8.0
+imbalanced-learn==0.14.1
+xgboost==3.2.0
+catboost==1.2.10
+shap==0.51.0
+
+# Deep learning
+torch==2.11.0
+
+# Notebook runner / kernels
+nbformat==5.10.4
+nbconvert==7.16.6
+ipykernel==6.30.1
+ipywidgets==8.1.7
+pytest==8.4.2
+papermill==2.6.0
+
+# Distributed HPO (must match infra/ray/Dockerfile pin)
+# `client` extra is required because pipeline 07/08 connect via ray://localhost:20001
+#ray[tune,client]==2.55.1
+
+# Experiment tracking + reference dataset publishing into the lab Postgres
+mlflow==3.11.1
+
+# Postgres
+psycopg2-binary==2.9.12
+SQLAlchemy==2.0.50
+
+# Airflow (matches the apache/airflow:3.2.1-python3.13 base image in
+# infra/airflow/Dockerfile so the DAG-author env matches the runtime).
+#apache-airflow==3.2.1
+
+# Prometheus instrumentation surfaced by the inference API.
+# prometheus-client==0.24.0
+
+
+# Optional GPU acceleration (NVIDIA only, pipeline falls back to CPU).
+# CUDA-13 wheels live on NVIDIA's index, NOT the public PyPI mirror, so installing
+# them requires both an extra index URL and a CUDA-13 host. Keep these commented by
+# default. A fresh `pip install -r requirements.txt` would otherwise fail on any
+# CPU-only host. To enable on CUDA-13 / GB10:
+#   pip install --extra-index-url https://pypi.nvidia.com cuml-cu13 cudf-cu13
+# (or move them to a separate requirements-gpu.txt with pinned versions).
+# cuml-cu13==26.4.0
+# cudf-cu13==26.4.0
+

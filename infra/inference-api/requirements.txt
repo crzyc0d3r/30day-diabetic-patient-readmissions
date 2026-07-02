@@ -1,0 +1,24 @@
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+pydantic==2.13.3
+mlflow==3.11.1
+# sklearn is required for the *preprocessor* (it deserialises a fitted
+# ColumnTransformer / StandardScaler / OneHotEncoder). The classifier itself
+# does not need it: main.py dispatches to the native MLflow flavor.
+scikit-learn==1.8.0
+# Native classifier flavors. Add lightgbm here if a LightGBM-flavor model is
+# ever promoted to @champion. Add torch (~1 GB) for a PyTorch MLP champion.
+# main.py imports each flavor lazily so a missing optional dep yields a clean
+# 503 instead of a startup crash.
+catboost==1.2.10
+xgboost==3.2.0
+# lightgbm==4.5.0          # uncomment when a LightGBM champion is expected
+# torch==2.11.0            # uncomment when a PyTorch MLP champion is expected
+pandas==2.3.3
+numpy==2.4.4
+joblib==1.5.3
+pyyaml==6.0.2
+# Prometheus instrumentation for the /metrics endpoint (request volume,
+# latency p95, score distribution, champion swaps). Scraped by the in-stack
+# prometheus service and surfaced via the medi-watch-model-kpis dashboard.
+prometheus-client==0.24.0

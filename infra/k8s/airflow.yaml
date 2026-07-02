@@ -1,0 +1,207 @@
+# Kubernetes manifest for the medi-watch Airflow orchestrator (LocalExecutor).
+#
+# Kubernetes deployment note:
+# Single-pod LocalExecutor footprint, sufficient for this single-pod deployment
+# on a small cluster. For real production swap to
+# CeleryExecutor (separate scheduler/worker Pods) or KubernetesExecutor
+# (per-task Pods) and split scheduler / webserver into their own Deployments.
+#
+# Deployment hardening notes:
+#   • Image is `${ECR_REGISTRY}/mlops-airflow:${IMAGE_TAG}` (same convention as
+#     inference-api.yaml / mlflow.yaml / ray.yaml). The CI deploy stage exports
+#     ECR_REGISTRY (the registry it pushed to) + the build SHA via `envsubst`
+#     before `kubectl apply`. For a LOCAL preloaded image, ECR_REGISTRY defaults
+#     to a placeholder and imagePullPolicy: IfNotPresent keeps it from being
+#     contacted — tag your local build to match. For local development run:
+#         ECR_REGISTRY=local IMAGE_TAG=latest envsubst < airflow.yaml | kubectl apply -f -
+#   • `k8s-airflow-plaintext-admin-secret`: the `airflow-admin` Secret
+#     carries no plaintext password. Create it out-of-band before
+#     applying this manifest (see the comment above the Secret block) or wire
+#     in a SealedSecret / ExternalSecret for production.
+#
+# Local quickstart:
+#
+#   docker compose -f ../docker-compose.yml build airflow
+#   docker tag mlops-airflow:latest local/mlops-airflow:latest
+#   kind load docker-image local/mlops-airflow:latest --name <cluster>
+#   kubectl create secret generic airflow-admin --namespace medi-watch \
+#     --from-literal=username=admin \
+#     --from-literal=password="$(openssl rand -base64 18)" \
+#     --from-literal=email=admin@example.invalid
+#   ECR_REGISTRY=local IMAGE_TAG=latest envsubst < airflow.yaml | kubectl apply -f -
+#   kubectl port-forward -n medi-watch svc/airflow-webserver 8080:8080
+#
+# DAGs are baked into the image at /opt/airflow/dags via the Dockerfile
+# COPY. The PVC holds /opt/airflow/logs + the metadata sqlite DB so a Pod
+# restart doesn't lose history.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: medi-watch
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-state
+  namespace: medi-watch
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+  namespace: medi-watch
+data:
+  AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+  AIRFLOW__CORE__DAGS_FOLDER: "/opt/airflow/dags"
+  AIRFLOW__WEBSERVER__BASE_URL: "http://localhost:8080"
+  AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "False"
+  AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.session"
+  # Point DAGs at the in-cluster MLflow + Ray services.
+  MLFLOW_TRACKING_URI: "http://mlflow.medi-watch.svc.cluster.local:5000"
+  RAY_ADDRESS: "ray://ray-head.medi-watch.svc.cluster.local:10001"
+---
+# The airflow-admin Secret is
+# intentionally NOT included as a literal here. This manifest is checked into
+# git, so a plaintext password in `stringData` would expose admin credentials
+# to anyone with repo access. Create it out-of-band before applying:
+#
+#   kubectl create secret generic airflow-admin --namespace medi-watch \
+#     --from-literal=username=admin \
+#     --from-literal=password="$(openssl rand -base64 18)" \
+#     --from-literal=email=admin@example.invalid
+#
+# For production prefer a SealedSecret (https://github.com/bitnami-labs/sealed-secrets)
+# or an ExternalSecret backed by Vault / AWS Secrets Manager / GCP Secret Manager.
+# Either replaces this stanza with a reference that ratcheted-down readers can
+# audit without seeing the cleartext.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow
+  namespace: medi-watch
+  labels: {app: airflow}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}  # sqlite metadata DB, single writer
+  selector:
+    matchLabels: {app: airflow}
+  template:
+    metadata:
+      labels: {app: airflow}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 50000  # airflow user in the official image
+        fsGroup: 50000
+      initContainers:
+        - name: init-db
+          image: ${ECR_REGISTRY}/mlops-airflow:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["bash", "-c"]
+          args:
+            - |
+              airflow db migrate
+              airflow users create \
+                --username "$ADMIN_USERNAME" \
+                --password "$ADMIN_PASSWORD" \
+                --email    "$ADMIN_EMAIL" \
+                --firstname admin --lastname user --role Admin || true
+          env:
+            - {name: ADMIN_USERNAME, valueFrom: {secretKeyRef: {name: airflow-admin, key: username}}}
+            - {name: ADMIN_PASSWORD, valueFrom: {secretKeyRef: {name: airflow-admin, key: password}}}
+            - {name: ADMIN_EMAIL,    valueFrom: {secretKeyRef: {name: airflow-admin, key: email}}}
+          envFrom:
+            - configMapRef: {name: airflow-config}
+          volumeMounts:
+            - {name: state, mountPath: /opt/airflow}
+      containers:
+        - name: webserver
+          image: ${ECR_REGISTRY}/mlops-airflow:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          # Airflow 3.x removed the `webserver` subcommand. The UI+REST API is
+          # now served by `api-server` (matches infra/docker-compose.yml).
+          command: ["airflow", "api-server"]
+          ports:
+            - {containerPort: 8080, name: http}
+          envFrom:
+            - configMapRef: {name: airflow-config}
+          # Airflow 3.x serves health under the FastAPI app at
+          # /api/v2/monitor/health (the old /health path 404s).
+          livenessProbe:
+            httpGet: {path: /api/v2/monitor/health, port: http}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet: {path: /api/v2/monitor/health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: {cpu: "200m", memory: "512Mi"}
+            limits:   {cpu: "1",    memory: "1Gi"}
+          volumeMounts:
+            - {name: state, mountPath: /opt/airflow}
+        - name: scheduler
+          image: ${ECR_REGISTRY}/mlops-airflow:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["airflow", "scheduler"]
+          envFrom:
+            - configMapRef: {name: airflow-config}
+          resources:
+            requests: {cpu: "200m", memory: "512Mi"}
+            limits:   {cpu: "1",    memory: "1Gi"}
+          volumeMounts:
+            - {name: state, mountPath: /opt/airflow}
+        # Airflow 3.x parses DAGs in a standalone dag-processor (the scheduler no
+        # longer does it) and runs deferred/sensor tasks in a triggerer. Both are
+        # separate services in infra/docker-compose.yml, co-located here behind
+        # the shared sqlite state PVC (LocalExecutor, single-writer Recreate pod).
+        - name: dag-processor
+          image: ${ECR_REGISTRY}/mlops-airflow:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["airflow", "dag-processor"]
+          envFrom:
+            - configMapRef: {name: airflow-config}
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits:   {cpu: "1",    memory: "1Gi"}
+          volumeMounts:
+            - {name: state, mountPath: /opt/airflow}
+        - name: triggerer
+          image: ${ECR_REGISTRY}/mlops-airflow:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["airflow", "triggerer"]
+          envFrom:
+            - configMapRef: {name: airflow-config}
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits:   {cpu: "1",    memory: "1Gi"}
+          volumeMounts:
+            - {name: state, mountPath: /opt/airflow}
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: airflow-state
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-webserver
+  namespace: medi-watch
+  labels: {app: airflow}
+spec:
+  type: ClusterIP
+  selector: {app: airflow}
+  ports:
+    - {name: http, port: 8080, targetPort: 8080}

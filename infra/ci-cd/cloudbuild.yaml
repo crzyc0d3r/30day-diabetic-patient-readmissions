@@ -1,0 +1,349 @@
+# CI/CD for the medi-watch stack: Google Cloud Build.
+#
+# Mirrors ./azure-pipelines.yml stage-for-stage. The Azure file is the
+# canonical source-of-truth for CI behavior. When you edit a stage there,
+# also update this file and ./Jenkinsfile.
+#
+# Cloud Build is a flat list of `steps` (no native stages or
+# conditionals), so we use bash `if` guards on the `_SKIP_SMOKE`,
+# `_REGISTRY`, and `_DEPLOY_CLUSTER` substitutions to mirror the Azure
+# stage `condition:` blocks.
+#
+# Required substitutions (set on the trigger in the Cloud Build UI, or
+# pass with `--substitutions` to `gcloud builds submit`):
+#   _PROJECT_DIR: path (relative to the repo root) of the snapshot.
+#                      Same semantics as the Azure PROJECT_DIR variable.
+#   _REASON: free-text "why was this triggered?" (default 'push').
+#   _SKIP_SMOKE: 'true' to skip the e2e compose stage (default 'false').
+#   _REGISTRY: e.g. `us-central1-docker.pkg.dev/<proj>/medi-watch`.
+#                      When empty, the publishing step short-circuits, matching
+#                      the Azure ACR_NAME guard.
+#   _DEPLOY_CLUSTER: GKE cluster name. When empty, the deployment step short-circuits, matching the Azure KUBE_SERVICE_CONNECTION
+#                      guard.
+#   _DEPLOY_LOCATION: GKE cluster region/zone (e.g. `us-central1`). Only
+#                      used when _DEPLOY_CLUSTER is set.
+#   _DEPLOY_NAMESPACE: defaults to `medi-watch`.
+#
+# Trigger surface:
+#   • Push to main: create a Cloud Build trigger with branch filter
+#                    `^main$` pointing at this file (`infra/ci-cd/
+#                    cloudbuild.yaml`).
+#   • Manual run: `gcloud builds submit --config=infra/ci-cd/cloudbuild.yaml`.
+#   • Remote / API: POST to https://cloudbuild.googleapis.com/v1/projects/
+#                    <proj>/triggers/<id>:run (equivalent to the
+#                    azure-pipelines remote-trigger pattern used by
+#                    retrain_on_drift_dag.py).
+
+substitutions:
+  _PROJECT_DIR: '.'
+  _REASON: 'push'
+  _SKIP_SMOKE: 'false'
+  _REGISTRY: ''
+  _DEPLOY_CLUSTER: ''
+  _DEPLOY_LOCATION: ''
+  _DEPLOY_NAMESPACE: 'medi-watch'
+  _INFERENCE_IMAGE: 'mlops-inference-api'
+  _AIRFLOW_IMAGE:   'mlops-airflow'
+  _MLFLOW_IMAGE:    'mlops-mlflow'
+  _RAY_IMAGE:       'mlops-ray'
+  _PYTHON_VERSION: '3.13'
+
+# Cloud Build's default-pool e2 runners have ~30 GiB disk. The composition
+# smoke pulls postgres + mlflow + the inference image, so bump the disk.
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+  env:
+    - 'RUN_REASON=${_REASON}'
+
+timeout: 3600s
+
+steps:
+
+  # ───────────────────────────────────────────────────────────────────
+  # 1. Validate: ruff + pyright + structural pytest + manifest sanity
+  # MIRRORED-IN: azure-pipelines.yml, Jenkinsfile
+  # ───────────────────────────────────────────────────────────────────
+  - id: 'validate'
+    name: 'python:${_PYTHON_VERSION}-slim'
+    entrypoint: 'bash'
+    dir: '${_PROJECT_DIR}'
+    args:
+      - '-c'
+      - |
+        set -eux
+        pip install --upgrade pip
+        pip install \
+          ruff==0.13.0 \
+          pyright==1.1.379 \
+          nbformat==5.10.4 \
+          pyyaml==6.0.2 \
+          pytest==8.3.3
+
+        # Strict scope, must stay lint-clean.
+        # run_pipeline.py is checked individually under pipeline/ so the
+        # rest of pipeline/ stays in advisory scope.
+        ruff check \
+          pipeline/run_pipeline.py \
+          helpers \
+          infra/inference-api/main.py \
+          infra/airflow/dags
+        # Advisory scope: a pre-existing backlog across pipeline
+        # notebooks + tests. Promote each target to strict once clean.
+        ruff check --exit-zero pipeline test
+
+        # Pyright is advisory in CI (drop the `|| true` to make it
+        # strict). `reportMissingImports: warning` in pyrightconfig.json
+        # already keeps container-only imports from being errors.
+        pyright || true
+
+        pytest -q \
+          test/test_dag_modules_parse.py \
+          test/test_constants.py
+
+        python - <<'PY'
+        import sys, glob, nbformat
+        files = sorted(glob.glob('pipeline/[0-9][0-9]_*.ipynb'))
+        if not files:
+            sys.exit("ERROR: no notebooks found under pipeline/*.ipynb — did the layout move again?")
+        for p in files:
+            nb = nbformat.read(p, as_version=4)
+            print(f'  {p}: {len(nb.cells)} cells OK')
+        PY
+
+        python helpers/check_requirements_pins.py
+
+  # ───────────────────────────────────────────────────────────────────
+  # 2. Build: all four images (inference, airflow, mlflow, ray)
+  # MIRRORED-IN: azure-pipelines.yml, Jenkinsfile. Keep the image list in sync.
+  # ───────────────────────────────────────────────────────────────────
+  - id: 'build-inference'
+    name: 'gcr.io/cloud-builders/docker'
+    dir: '${_PROJECT_DIR}'
+    waitFor: ['validate']
+    args:
+      - 'build'
+      - '-t'
+      - '${_INFERENCE_IMAGE}:${COMMIT_SHA}'
+      - '-t'
+      - '${_INFERENCE_IMAGE}:latest'
+      - '-t'
+      - '${_INFERENCE_IMAGE}:smoke'
+      - '-f'
+      - 'infra/inference-api/Dockerfile'
+      - 'infra/inference-api'
+
+  - id: 'build-airflow'
+    name: 'gcr.io/cloud-builders/docker'
+    dir: '${_PROJECT_DIR}'
+    waitFor: ['validate']
+    args:
+      - 'build'
+      - '-t'
+      - '${_AIRFLOW_IMAGE}:${COMMIT_SHA}'
+      - '-t'
+      - '${_AIRFLOW_IMAGE}:latest'
+      - '-f'
+      - 'infra/airflow/Dockerfile'
+      - 'infra/airflow'
+
+  - id: 'build-mlflow'
+    name: 'gcr.io/cloud-builders/docker'
+    dir: '${_PROJECT_DIR}'
+    waitFor: ['validate']
+    args:
+      - 'build'
+      - '-t'
+      - '${_MLFLOW_IMAGE}:${COMMIT_SHA}'
+      - '-t'
+      - '${_MLFLOW_IMAGE}:latest'
+      - '-f'
+      - 'infra/mlflow/Dockerfile'
+      - 'infra/mlflow'
+
+  - id: 'build-ray'
+    name: 'gcr.io/cloud-builders/docker'
+    dir: '${_PROJECT_DIR}'
+    waitFor: ['validate']
+    args:
+      - 'build'
+      - '-t'
+      - '${_RAY_IMAGE}:${COMMIT_SHA}'
+      - '-t'
+      - '${_RAY_IMAGE}:latest'
+      - '-f'
+      - 'infra/ray/Dockerfile'
+      - 'infra/ray'
+
+  - id: 'container-smoke'
+    name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    waitFor: ['build-inference']
+    args:
+      - '-c'
+      - |
+        # Single-container smoke for the inference image. HEALTHCHECK
+        # polls /healthz, and we wait for `docker inspect` to flip green.
+        # Even without MLflow upstream /healthz returns 503 rather than
+        # crashing, which is what "image starts cleanly" means here.
+        set -eux
+        docker run --rm -d --name smoke -p 18099:8002 \
+          --health-cmd 'curl -fsS http://localhost:8002/redoc > /dev/null || exit 1' \
+          --health-interval 2s --health-retries 10 --health-timeout 2s \
+          -e MLFLOW_TRACKING_URI=http://no-mlflow:5000 \
+          ${_INFERENCE_IMAGE}:smoke
+        for _ in $(seq 1 30); do
+          STATE=$(docker inspect -f '{{.State.Health.Status}}' smoke 2>/dev/null || echo starting)
+          case "$STATE" in
+            healthy)   echo "smoke healthy"; break ;;
+            unhealthy) echo "smoke unhealthy"; docker logs smoke; exit 1 ;;
+          esac
+          sleep 2
+        done
+        docker logs smoke | tail -20
+        docker rm -f smoke >/dev/null
+
+  # ───────────────────────────────────────────────────────────────────
+  # 3. End-to-end compose smoke (skippable)
+  # MIRRORED-IN: azure-pipelines.yml, Jenkinsfile
+  # ───────────────────────────────────────────────────────────────────
+  - id: 'e2e-compose-smoke'
+    name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    dir: '${_PROJECT_DIR}/infra'
+    waitFor: ['container-smoke']
+    args:
+      - '-c'
+      - |
+        set -eux
+        if [ "${_SKIP_SMOKE}" = "true" ]; then
+          echo "Skipping e2e smoke (_SKIP_SMOKE=true)"
+          exit 0
+        fi
+
+        # python3 + cryptography for the Fernet key gen. Install if absent.
+        if ! command -v python3 >/dev/null 2>&1; then
+          apt-get update && apt-get install -y --no-install-recommends \
+            python3 python3-cryptography openssl curl >/dev/null
+        fi
+
+        cat > .env <<EOF
+        POSTGRES_USER=mlops
+        POSTGRES_PASSWORD=ci-placeholder
+        POSTGRES_DB=airflow
+        AIRFLOW_ADMIN_USER=admin
+        AIRFLOW_ADMIN_PASSWORD=admin
+        AIRFLOW_ADMIN_EMAIL=ci@example.com
+        AIRFLOW_FERNET_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+        AIRFLOW_JWT_SECRET=$(openssl rand -hex 32)
+        AIRFLOW_UID=1000
+        HOST_IP=127.0.0.1
+        EOF
+
+        docker compose up -d --build --wait \
+          postgres mlflow inference-api
+        docker compose ps
+
+        set +e
+        EXIT=0
+        curl -fsS http://localhost:5000/health || EXIT=$?
+        curl -fsS http://localhost:8002/healthz || \
+          echo "WARN: inference-api /healthz returns 503 when no @champion exists yet — that is expected on a clean DB"
+        curl -fsS http://localhost:18002/redoc | head -5 || EXIT=$?
+        set -e
+
+        docker compose logs --tail=200 inference-api mlflow postgres || true
+        docker compose down -v || true
+        exit ${EXIT}
+
+  # ───────────────────────────────────────────────────────────────────
+  # 4. Publish: push all four images to Artifact Registry
+  # MIRRORED-IN: azure-pipelines.yml, Jenkinsfile. Keep the image list in sync.
+  # ───────────────────────────────────────────────────────────────────
+  - id: 'publish'
+    name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    dir: '${_PROJECT_DIR}'
+    waitFor: ['build-inference', 'build-airflow', 'build-mlflow', 'build-ray']
+    args:
+      - '-c'
+      - |
+        set -eux
+        if [ -z "${_REGISTRY}" ]; then
+          echo "Skipping publish (_REGISTRY is empty)"
+          exit 0
+        fi
+        # Cloud Build's default service account has push perms on Artifact
+        # Registry within the same project, so no explicit docker login is
+        # needed for *.pkg.dev / gcr.io. For external registries set
+        # _REGISTRY to the full host and configure a Secret Manager
+        # secret + extra step.
+        for IMG in ${_INFERENCE_IMAGE} ${_AIRFLOW_IMAGE} ${_MLFLOW_IMAGE} ${_RAY_IMAGE}; do
+          docker tag ${IMG}:${COMMIT_SHA} ${_REGISTRY}/${IMG}:${COMMIT_SHA}
+          docker tag ${IMG}:latest        ${_REGISTRY}/${IMG}:latest
+          docker push ${_REGISTRY}/${IMG}:${COMMIT_SHA}
+          docker push ${_REGISTRY}/${IMG}:latest
+        done
+
+  # ───────────────────────────────────────────────────────────────────
+  # 5. Deploy: kubectl apply + rollout-status all four deployments
+  # MIRRORED-IN: azure-pipelines.yml, Jenkinsfile. Keep the deployment list in sync.
+  # ───────────────────────────────────────────────────────────────────
+  - id: 'deploy'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'bash'
+    dir: '${_PROJECT_DIR}'
+    waitFor: ['publish']
+    args:
+      - '-c'
+      - |
+        set -eux
+        if [ -z "${_DEPLOY_CLUSTER}" ]; then
+          echo "Skipping deploy (_DEPLOY_CLUSTER is empty)"
+          exit 0
+        fi
+        if [ "${BRANCH_NAME}" != "main" ]; then
+          echo "Skipping deploy (branch=${BRANCH_NAME}, not main)"
+          exit 0
+        fi
+
+        apt-get update && apt-get install -y --no-install-recommends gettext-base >/dev/null
+
+        gcloud container clusters get-credentials "${_DEPLOY_CLUSTER}" \
+          --location "${_DEPLOY_LOCATION}"
+
+        export IMAGE_TAG="${COMMIT_SHA}"
+        # ECR_REGISTRY is the registry the publish step pushed to, so the
+        # rendered image refs (<registry>/mlops-*:<sha>) resolve on the cluster.
+        # _DEPLOY_CLUSTER is non-empty here (guarded above), so _REGISTRY is set
+        # too in a real deploy; default to "local" only as a safety net so the
+        # ref still renders valid (imagePullPolicy: IfNotPresent).
+        export ECR_REGISTRY="${_REGISTRY:-local}"
+        echo "Stamping manifests with ECR_REGISTRY=$ECR_REGISTRY, IMAGE_TAG=$IMAGE_TAG"
+        mkdir -p .k8s-rendered
+        for f in infra/k8s/airflow.yaml infra/k8s/inference-api.yaml infra/k8s/mlflow.yaml infra/k8s/ray.yaml; do
+          envsubst < "$f" > ".k8s-rendered/$(basename "$f")"
+        done
+        grep -nH "image: .*mlops-" .k8s-rendered/*.yaml
+
+        kubectl -n "${_DEPLOY_NAMESPACE}" apply -f .k8s-rendered/
+
+        # Roll out each deployment individually so an ImagePullBackOff
+        # on any of them fails the build. Each deployment is awaited on
+        # its own, not just inference-api.
+        for DEPLOY in medi-watch-inference mlflow airflow ray-head; do
+          kubectl -n "${_DEPLOY_NAMESPACE}" \
+            rollout status deployment/${DEPLOY} --timeout=5m
+        done
+
+# Images Cloud Build should track in the build summary. The list is
+# evaluated regardless of whether the deployment step ran. An empty _REGISTRY
+# means these substitute to bare image names, which Cloud Build then
+# records as "not pushed". That is fine and matches the publish-gated
+# behavior in the Azure pipeline.
+images:
+  - '${_REGISTRY}/${_INFERENCE_IMAGE}:${COMMIT_SHA}'
+  - '${_REGISTRY}/${_AIRFLOW_IMAGE}:${COMMIT_SHA}'
+  - '${_REGISTRY}/${_MLFLOW_IMAGE}:${COMMIT_SHA}'
+  - '${_REGISTRY}/${_RAY_IMAGE}:${COMMIT_SHA}'

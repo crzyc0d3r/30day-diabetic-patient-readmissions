@@ -1,0 +1,26 @@
+apiVersion: 1
+
+# Two dashboard providers let Ray's session-generated
+# dashboards (mounted read-only from /tmp/ray) and our model-KPI dashboards
+# (mounted from /var/lib/grafana/dashboards) coexist in the same Grafana.
+
+providers:
+  - name: medi-watch-model-kpis
+    orgId: 1
+    folder: medi-watch
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+
+  - name: ray-runtime
+    orgId: 1
+    folder: ray
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /tmp/ray/session_latest/metrics/grafana/dashboards

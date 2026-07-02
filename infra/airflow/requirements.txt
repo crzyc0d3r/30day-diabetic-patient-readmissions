@@ -1,0 +1,24 @@
+mlflow==3.11.1
+ray[client,tune]==2.55.1
+evidently==0.7.21
+scikit-learn==1.8.0
+pandas==2.3.3
+numpy==2.4.4
+xgboost==3.2.0
+catboost==1.2.10
+joblib==1.5.3
+psycopg2-binary==2.9.12
+papermill==2.6.0
+ipykernel==6.30.1
+# Notebook execution stack (matches notebook imports for headless retrain DAG)
+matplotlib==3.10.1
+seaborn==0.13.2
+# EDA effect-size / adjusted-logistic stats (helpers/eda_stats.py, NB03). Kept in
+# lockstep with the top-level requirements.txt pin.
+statsmodels==0.14.6
+# Must match the top-level / Ray torch pin (2.11.0): the retrain DAG runs as a
+# Ray driver, so a fitted MLP returned from a 2.11 worker is re-handled here.
+# A CPU wheel is sufficient (the driver does not train on GPU). Confirm a
+# 2.11.0 wheel resolves on the airflow image arch (amd64 + arm64) at build.
+torch==2.11.0
+imbalanced-learn==0.14.1

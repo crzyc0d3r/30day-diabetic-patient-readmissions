@@ -1,0 +1,99 @@
+/* Driftly dashboard components, layered on top of the medi-watch design system
+   (medishell.css — ported verbatim from README.html). Only the interactive
+   dashboard pieces the doc system doesn't ship live here, all in the same
+   token language: status colors, the controls bar, verdict card, status pills,
+   metric-cell tints, chart panels, and a few small utilities. */
+
+:root {
+  /* OK/WARN/ALERT mapped onto the doc system's categorical palette. var() is
+     resolved per element, so these track dark/light automatically. */
+  --ok: var(--green);
+  --warn: var(--amber);
+  --alert: var(--rose);
+}
+
+/* ---- controls bar ---- */
+.controls {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px;
+  padding: 20px 22px; background: var(--bg-2); border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-3); font-weight: 500;
+}
+.field select, .field input[type="file"] {
+  font-family: var(--display); font-size: 13px; color: var(--ink);
+  background: var(--bg-3); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 10px 12px; min-width: 210px;
+}
+.field input[type="file"] { padding: 8px 10px; font-size: 12px; }
+.field select:hover, .field input[type="file"]:hover { border-color: var(--accent-line); }
+
+/* ---- buttons ---- */
+.btn {
+  font-family: var(--display); font-size: 13px; font-weight: 600;
+  padding: 11px 20px; border-radius: 6px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--bg);
+  transition: all 150ms ease;
+}
+.btn:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---- verdict hero card ---- */
+.verdict {
+  display: flex; align-items: center; gap: 22px; padding: 24px 26px;
+  border-radius: 12px; border: 1px solid var(--rule); background: var(--bg-2);
+  max-width: var(--content-max);
+}
+.verdict.ok { border-color: color-mix(in srgb, var(--ok) 45%, var(--rule)); background: color-mix(in srgb, var(--ok) 9%, var(--bg-2)); }
+.verdict.warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--rule)); background: color-mix(in srgb, var(--warn) 9%, var(--bg-2)); }
+.verdict.alert { border-color: color-mix(in srgb, var(--alert) 45%, var(--rule)); background: color-mix(in srgb, var(--alert) 9%, var(--bg-2)); }
+.verdict-badge {
+  font-family: var(--mono); font-weight: 600; font-size: 22px; letter-spacing: 0.05em;
+  padding: 16px 24px; border-radius: 10px; color: var(--bg); white-space: nowrap;
+}
+.verdict.ok .verdict-badge { background: var(--ok); }
+.verdict.warn .verdict-badge { background: var(--warn); }
+.verdict.alert .verdict-badge { background: var(--alert); }
+.verdict-meta { display: flex; flex-wrap: wrap; gap: 14px 32px; }
+.verdict-meta .k {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.verdict-meta .v { font-size: 14px; font-weight: 600; color: var(--ink); margin-top: 3px; }
+
+/* ---- status pills ---- */
+.pill {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em;
+  padding: 3px 9px; border-radius: 999px; display: inline-block;
+}
+.pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pill.alert { color: var(--alert); background: color-mix(in srgb, var(--alert) 14%, transparent); }
+
+/* ---- table extensions (heatmap behaviour over the doc .tbl) ---- */
+table.tbl thead th.num { text-align: right; }
+table.tbl tbody td.metric {
+  text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2);
+}
+table.tbl tbody tr { cursor: pointer; }
+table.tbl tbody tr.selected td { background: var(--accent-soft); }
+td.metric.m-warn { color: var(--warn); font-weight: 600; }
+td.metric.m-alert { color: var(--alert); font-weight: 600; }
+.type-tag { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* ---- chart panels ---- */
+.panel { background: var(--bg-2); border: 1px solid var(--rule); border-radius: 10px; padding: 22px 24px; max-width: var(--content-max); }
+.panel-sub { font-size: 13px; color: var(--ink-3); margin: 0 0 16px; line-height: 1.5; }
+
+/* ---- small utilities ---- */
+.muted { color: var(--ink-3); }
+.empty { color: var(--ink-3); padding: 8px 0 4px; font-size: 14.5px; line-height: 1.6; }
+.spinner {
+  display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: var(--bg); border-radius: 50%; animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

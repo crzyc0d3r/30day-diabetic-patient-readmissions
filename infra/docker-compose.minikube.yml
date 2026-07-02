@@ -1,0 +1,48 @@
+# Opt-in overlay: wire the Airflow worker to a LOCAL minikube cluster so the
+# retrain_on_drift DAG's `redeploy_inference_api` task can `kubectl rollout
+# restart` the inference Deployment running on minikube — the local rehearsal of
+# the EKS redeploy loop.
+#
+# Kept OUT of the base docker-compose.yml on purpose: the base stack must stay
+# bootable without a local cluster (CI e2e_smoke, AWS users). This overlay
+# follows the same additive pattern as docker-compose.gpu.yml.
+#
+# Prerequisites:
+#   1. minikube running with the inference Deployment applied
+#      (see infra/k8s/deploy-local.sh).
+#   2. A portable kubeconfig at infra/.local-kube/config with certs EMBEDDED and
+#      server https://192.168.49.2:8443 — regenerate after any `minikube delete`:
+#        kubectl config view --flatten --minify --context minikube \
+#          > infra/.local-kube/config
+#   3. The `minikube` Docker network exists (created by `minikube start`).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.minikube.yml up -d \
+#     airflow-scheduler
+#   # then trigger the DAG, or test just the redeploy task:
+#   docker compose exec airflow-scheduler \
+#     airflow tasks test retrain_on_drift redeploy_inference_api 2026-05-31
+#
+# Why only airflow-scheduler: with LocalExecutor the scheduler runs the task
+# in-process, so it is the one container that needs cluster reach. Add the same
+# three keys to other airflow services if you switch executors.
+
+networks:
+  # The network minikube's docker driver creates for its node container. External
+  # so compose joins it rather than managing it; the node's apiserver listens on
+  # 192.168.49.2:8443 here and its serving cert is valid for that address.
+  minikube:
+    external: true
+
+services:
+  airflow-scheduler:
+    networks:
+      - mlops-net
+      - minikube
+    environment:
+      # LOCAL mode: redeploy_inference_api skips `aws eks update-kubeconfig` and
+      # targets this context using the mounted kubeconfig. No AWS creds needed.
+      LOCAL_KUBE_CONTEXT: minikube
+      KUBECONFIG: /home/airflow/.kube/config
+    volumes:
+      - ./.local-kube/config:/home/airflow/.kube/config:ro

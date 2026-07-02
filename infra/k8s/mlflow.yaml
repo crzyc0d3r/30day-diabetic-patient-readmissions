@@ -1,0 +1,221 @@
+# Kubernetes manifest for the medi-watch MLflow tracking server + registry.
+#
+# Postgres-only by design. Per CLAUDE.md and helpers/mlops_helpers.py::
+# init_mlflow, this project refuses SQLite tracking stores. The compose stack
+# (`infra/docker-compose.yml`) runs MLflow against a Postgres container. This
+# manifest mirrors that with an in-cluster Postgres StatefulSet so a fresh
+# kind / k3d / minikube cluster boots the same Postgres-backed surface
+# without provisioning an external database.
+#
+# Components landed:
+#   * Namespace `medi-watch`
+#   * Postgres StatefulSet `mlflow-postgres` + headless Service + PVC (5Gi)
+#   * MLflow Deployment + Service + ConfigMap (backend URI -> Postgres)
+#
+# Local quickstart (kind / k3d / minikube):
+#
+#   # 1. build the image
+#   docker compose -f ../docker-compose.yml build mlflow
+#   docker tag mlops-mlflow:latest local/mlops-mlflow:latest
+#   kind load docker-image local/mlops-mlflow:latest --name <cluster>
+#
+#   # 2. deploy. The image is ${ECR_REGISTRY}/mlops-mlflow:${IMAGE_TAG} (same
+#   #    convention as the other manifests). Locally ECR_REGISTRY is a placeholder
+#   #    and imagePullPolicy: IfNotPresent keeps it from being contacted.
+#   ECR_REGISTRY=local IMAGE_TAG=latest envsubst < mlflow.yaml | kubectl apply -f -
+#
+#   # 3. port-forward + UI
+#   kubectl port-forward -n medi-watch svc/mlflow 5000:5000
+#   open http://localhost:5000
+#
+# MLflow's artifact store still rides on a PVC (5Gi at /mlflow/artifacts).
+# For real production swap that PVC for S3 / GCS and the in-cluster
+# StatefulSet for a managed Postgres (Cloud SQL / RDS / Azure DB) by editing
+# `mlflow-config.MLFLOW_BACKEND_STORE_URI` and dropping the StatefulSet block.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: medi-watch
+---
+# --- in-cluster Postgres backing the MLflow tracking + registry store -------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mlflow-postgres-secret
+  namespace: medi-watch
+type: Opaque
+stringData:
+  POSTGRES_USER: mlflow
+  POSTGRES_PASSWORD: mlflow
+  POSTGRES_DB: mlflow
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-postgres
+  namespace: medi-watch
+  labels: {app: mlflow-postgres}
+spec:
+  type: ClusterIP
+  clusterIP: None          # headless so StatefulSet pods get stable DNS
+  selector: {app: mlflow-postgres}
+  ports:
+    - {name: postgres, port: 5432, targetPort: 5432}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mlflow-postgres
+  namespace: medi-watch
+  labels: {app: mlflow-postgres}
+spec:
+  serviceName: mlflow-postgres
+  replicas: 1
+  selector:
+    matchLabels: {app: mlflow-postgres}
+  template:
+    metadata:
+      labels: {app: mlflow-postgres}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {containerPort: 5432, name: postgres}
+          envFrom:
+            - secretRef: {name: mlflow-postgres-secret}
+          env:
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "mlflow", "-d", "mlflow"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "mlflow", "-d", "mlflow"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits:   {cpu: "1",    memory: "1Gi"}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 5Gi}
+---
+# --- MLflow tracking server (Postgres-backed) --------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: medi-watch
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mlflow-config
+  namespace: medi-watch
+data:
+  # Postgres-only, matching infra/docker-compose.yml's mlflow service.
+  # helpers/mlops_helpers.py::init_mlflow raises on a sqlite:/// URI.
+  MLFLOW_BACKEND_STORE_URI:    "postgresql://mlflow:mlflow@mlflow-postgres.medi-watch.svc.cluster.local:5432/mlflow"
+  MLFLOW_DEFAULT_ARTIFACT_ROOT: "/mlflow/artifacts"
+  MLFLOW_HOST: "0.0.0.0"
+  MLFLOW_PORT: "5000"
+  # entrypoint.sh builds its own backend URI from POSTGRES_HOST/PORT (it ignores
+  # MLFLOW_BACKEND_STORE_URI), so point it at the k8s Service, not compose's local postgres.
+  POSTGRES_HOST: "mlflow-postgres.medi-watch.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: medi-watch
+  labels: {app: mlflow}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: mlflow}
+  template:
+    metadata:
+      labels: {app: mlflow}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      # Wait for Postgres to be ready before starting MLflow.
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h mlflow-postgres.medi-watch.svc.cluster.local -p 5432 -U mlflow; do
+                echo "waiting for mlflow-postgres..."; sleep 2;
+              done
+      containers:
+        - name: mlflow
+          image: ${ECR_REGISTRY}/mlops-mlflow:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {containerPort: 5000, name: http}
+          envFrom:
+            - configMapRef: {name: mlflow-config}
+            - secretRef: {name: mlflow-postgres-secret}
+          volumeMounts:
+            - {name: artifacts, mountPath: /mlflow}
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: {cpu: "200m", memory: "512Mi"}
+            limits:   {cpu: "2",    memory: "2Gi"}
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: mlflow-artifacts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: medi-watch
+  labels: {app: mlflow}
+spec:
+  type: ClusterIP
+  selector: {app: mlflow}
+  ports:
+    - {name: http, port: 5000, targetPort: 5000}

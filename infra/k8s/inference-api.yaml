@@ -1,0 +1,174 @@
+# Kubernetes manifest for the medi-watch inference API.
+#
+# This is the ONLY workload medi-watch runs on Kubernetes. Airflow, Ray, and
+# MLflow run via infra/docker-compose.yml (off k8s). The Airflow `retrain_on_drift`
+# DAG is a *client* of this cluster: on a new @champion it `kubectl rollout
+# restart`s this Deployment so fresh pods re-pull the promoted model. The sibling
+# airflow.yaml / ray.yaml / mlflow.yaml manifests are retained only as optional
+# local-cluster reference and are NOT part of the AWS deploy path.
+#
+# Two values are substituted via `envsubst` before `kubectl apply` (see
+# infra/aws/deploy.sh):
+#   • ${IMAGE_TAG}:     the build SHA, so the deployed Pod is traceable to a commit.
+#   • ${ECR_REGISTRY}:  the ECR registry host, e.g.
+#                        123456789012.dkr.ecr.us-east-1.amazonaws.com
+#
+# The MLflow tracking/registry URI and the bearer token are NOT baked here:
+#   • MLFLOW_TRACKING_URI lives in the ConfigMap below and must point at an
+#     endpoint reachable from the EKS VPC (set it before apply).
+#   • INFERENCE_API_TOKEN lives in the Secret below. main.py enforces
+#     `Authorization: Bearer <token>` on /invocations + /reload when it is set.
+#     Create the Secret out-of-band (see infra/aws/README.md) and never commit a token.
+#
+# AWS quickstart (full runbook in infra/aws/README.md):
+#
+#   export AWS_REGION=us-east-1 EKS_CLUSTER_NAME=medi-watch
+#   export ECR_REGISTRY=<acct>.dkr.ecr.$AWS_REGION.amazonaws.com IMAGE_TAG=$(git rev-parse HEAD)
+#   bash ../aws/deploy.sh            # build → ECR push → envsubst → apply → rollout status
+#   kubectl port-forward svc/medi-watch-inference 8002:80 -n medi-watch
+#   curl http://localhost:8002/healthz
+#
+# Local quickstart (kind / k3d / minikube) still works. Pick any placeholder
+# ECR_REGISTRY and preload an image tagged to match. imagePullPolicy is
+# IfNotPresent, so kind/k3d never try to pull from the fake registry host:
+#
+#   docker compose -f ../docker-compose.yml build inference-api
+#   docker tag mlops-inference-api:latest local/mlops-inference-api:latest
+#   kind load docker-image local/mlops-inference-api:latest --name <cluster>
+#   ECR_REGISTRY=local IMAGE_TAG=latest envsubst < inference-api.yaml | kubectl apply -f -
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: medi-watch
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medi-watch-inference-config
+  namespace: medi-watch
+data:
+  # MLflow runs OFF k8s (docker-compose / managed endpoint). This URI must be
+  # routable from the EKS VPC. The pod resolves @champion from the registry on
+  # every startup and /reload, so an unreachable URI makes /healthz return 503.
+  # Set it to your real endpoint before applying (deploy.sh reads MLFLOW_TRACKING_URI
+  # from the environment and envsubst-stamps it here).
+  MLFLOW_TRACKING_URI: "${MLFLOW_TRACKING_URI}"
+  MODEL_NAME: "medi-watch-readmission"
+  MODEL_ALIAS: "champion"
+---
+# Bearer token for the inference API. main.py:require_bearer_or_audit enforces
+# `Authorization: Bearer <token>` on /invocations + /reload whenever
+# INFERENCE_API_TOKEN is set, mandatory now the workload lives in a cloud VPC.
+#
+# This manifest ships a `${INFERENCE_API_TOKEN}` PLACEHOLDER that deploy.sh stamps
+# the real value from the INFERENCE_API_TOKEN environment variable at apply time
+# (same envsubst pass as MLFLOW_TRACKING_URI), so the token never lands in git.
+# Export it before deploying, e.g. `export INFERENCE_API_TOKEN=$(openssl rand -hex 32)`,
+# and store it in your secrets manager so clients can authenticate.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: medi-watch-inference-secret
+  namespace: medi-watch
+type: Opaque
+stringData:
+  INFERENCE_API_TOKEN: "${INFERENCE_API_TOKEN}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medi-watch-inference
+  namespace: medi-watch
+  labels:
+    app: medi-watch-inference
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: medi-watch-inference
+  template:
+    metadata:
+      labels:
+        app: medi-watch-inference
+    spec:
+      containers:
+        - name: inference-api
+          image: ${ECR_REGISTRY}/mlops-inference-api:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8002
+              name: http
+          envFrom:
+            - configMapRef:
+                name: medi-watch-inference-config
+            - secretRef:
+                name: medi-watch-inference-secret
+          # /healthz returns 503 if the model fails to load, and k8s will restart.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness mirrors liveness here, since model load is part of /healthz.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: medi-watch-inference
+  namespace: medi-watch
+  labels:
+    app: medi-watch-inference
+spec:
+  type: ClusterIP
+  selector:
+    app: medi-watch-inference
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8002
+---
+# Optional: if your cluster has metrics-server, scale on CPU. Otherwise
+# remove this block.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: medi-watch-inference
+  namespace: medi-watch
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: medi-watch-inference
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

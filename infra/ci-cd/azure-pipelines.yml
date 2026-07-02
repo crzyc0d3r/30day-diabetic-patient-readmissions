@@ -1,0 +1,460 @@
+# CI/CD for the medi-watch stack: Azure DevOps Pipelines.
+#
+# Canonical source-of-truth for CI behavior. Two sibling pipelines mirror
+# this one stage-for-stage and MUST be kept in lockstep:
+#   - ./Jenkinsfile      (Jenkins declarative pipeline)
+#   - ./cloudbuild.yaml  (Google Cloud Build)
+# When you change a stage here, also update both siblings.
+#
+# Runs six stages:
+#   1. validate:   ruff + pyright + structural pytest + manifest sanity
+#                  + notebook parse (pipeline/*.ipynb) + requirements
+#                  pin drift check.
+#   2. build:      container images for inference-api, airflow, mlflow,
+#                  and ray. ALL FOUR are built because the deploy stage
+#                  stamps the same commit SHA into every k8s manifest.
+#                  Publishing only one would ImagePullBackOff the other
+#                  three.
+#   3. e2e_smoke:  boots the no-GPU subset of the compose stack
+#                  (postgres + mlflow + inference-api) and curls every
+#                  health endpoint. Skipped when `skipSmoke=true`.
+#   4. publish:    pushes all four images to the configured registry
+#                  (only when the ACR_NAME pipeline variable is set).
+#   5. deploy:     kubectl applies the four k8s manifests against the
+#                  configured cluster (only on `main`, only when
+#                  KUBE_SERVICE_CONNECTION is set). Stamps the build SHA
+#                  into the ${IMAGE_TAG} placeholder of every manifest,
+#                  then waits for rollout on each deployment.
+#
+# Required pipeline variables (set in Azure DevOps when configuring the
+# pipeline, so the YAML stays free of repo-layout assumptions):
+#   • PROJECT_DIR: path (relative to the repo root) of the snapshot to
+#     build. The repo root IS the project dir in this layout, so set
+#     PROJECT_DIR to `.`. This file lives at
+#     `infra/ci-cd/azure-pipelines.yml`, so the Azure DevOps pipeline
+#     definition's "YAML file" field must point there.
+#
+# To enable image push:
+#   • Add a Docker Registry service connection in Azure DevOps named
+#     `medi-watch-registry`.
+#   • Set the pipeline variable ACR_NAME to the registry hostname
+#     (e.g. mediwatch.azurecr.io).
+#
+# Trigger surface:
+#   • Push to main: automatic, via `trigger:` below.
+#   • Manual run (UI): clicks "Run pipeline". The `parameters:`
+#                                block below renders the form inputs.
+#   • Remote / API run: POST https://dev.azure.com/{org}/{project}
+#                                /_apis/pipelines/{id}/runs?api-version=
+#                                7.1-preview.1 with a PAT scoped to
+#                                "Build (read & execute)". Used by the
+#                                `trigger_azure_pipelines` task in
+#                                retrain_on_drift_dag.py so a new @champion
+#                                automatically triggers rebuild+publish.
+#                                See docs/manual.html §11 "Remote-trigger
+#                                recipe" for the curl recipe and PAT
+#                                setup.
+
+parameters:
+  - name: reason
+    type: string
+    default: "push"
+    displayName: "Why was this run triggered? (free text — surfaces in logs)"
+  - name: skipSmoke
+    type: boolean
+    default: false
+    displayName: "Skip the e2e compose smoke stage (use for fast publishes)"
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  INFERENCE_IMAGE: 'mlops-inference-api'
+  AIRFLOW_IMAGE:   'mlops-airflow'
+  MLFLOW_IMAGE:    'mlops-mlflow'
+  RAY_IMAGE:       'mlops-ray'
+  # Pinned to the exact CPython patch baked into rayproject/ray:2.55.1 (3.13.2),
+  # matching .python-version (the driver/host pin). This validate pipeline only
+  # lints/parses and runs no-model tests, and never opens a Ray client, so the
+  # pin is for a consistent, reproducible CI interpreter rather than to fix the
+  # cloudpickle warning directly. Keep it == .python-version == the Ray image patch.
+  # (UsePythonVersion@0 resolves the exact patch from the hosted tool cache /
+  # python-versions registry, and 3.13.2 is available there.)
+  PYTHON_VERSION: '3.13.2'
+  RUN_REASON: ${{ parameters.reason }}
+
+stages:
+  - stage: validate
+    displayName: 'Validate'
+    jobs:
+      - job: lint_and_check
+        displayName: 'Lint + structural checks'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+            displayName: 'Use Python $(PYTHON_VERSION)'
+
+          # MIRRORED-IN: Jenkinsfile, cloudbuild.yaml
+          - script: |
+              pip install --upgrade pip
+              pip install \
+                ruff==0.13.0 \
+                pyright==1.1.379 \
+                nbformat==5.10.4 \
+                pyyaml==6.0.2 \
+                pytest==8.3.3
+            displayName: 'Install lint + structural-test tooling'
+
+          - script: |
+              cd $(PROJECT_DIR)
+              # Strict scope, currently lint-clean. New code must not
+              # regress these targets. Build fails on any finding.
+              # run_pipeline.py is checked individually under pipeline/
+              # so the rest of pipeline/ stays in advisory scope.
+              ruff check \
+                pipeline/run_pipeline.py \
+                helpers \
+                infra/inference-api/main.py \
+                infra/airflow/dags
+            displayName: 'Ruff lint — strict scope'
+
+          - script: |
+              cd $(PROJECT_DIR)
+              # Advisory scope: a pre-existing backlog (~58 findings)
+              # across pipeline notebooks and tests. `--exit-zero` keeps
+              # CI green while still surfacing the count. Promote each
+              # target to strict scope once clean.
+              ruff check --exit-zero \
+                pipeline \
+                test
+            displayName: 'Ruff lint — advisory scope (backlog)'
+
+          - script: |
+              cd $(PROJECT_DIR)
+              # Pyright's `reportMissingImports: "warning"` (see
+              # pyrightconfig.json) keeps container-only imports from
+              # failing the build. The step is marked `continueOnError`
+              # so even genuine type errors are advisory until the
+              # project's been pyright-clean for a while.
+              pyright
+            displayName: 'Pyright (advisory)'
+            continueOnError: true
+
+          - script: |
+              cd $(PROJECT_DIR)
+              # Structural pytest only, no model deps. Heavy tests
+              # (torch/sklearn/xgboost) run locally or in a dedicated
+              # GPU job. Install the full requirements.txt to add them.
+              pytest -q \
+                test/test_dag_modules_parse.py \
+                test/test_constants.py
+            displayName: 'Pytest (structural / no-model tests)'
+
+          - script: |
+              cd $(PROJECT_DIR)
+              python <<'PY'
+              import sys, glob, nbformat
+              files = sorted(glob.glob('pipeline/[0-9][0-9]_*.ipynb'))
+              if not files:
+                  sys.exit("ERROR: no notebooks found under pipeline/*.ipynb — did the layout move again?")
+              for p in files:
+                  nb = nbformat.read(p, as_version=4)
+                  print(f'  {p}: {len(nb.cells)} cells OK')
+              PY
+            displayName: 'Validate every notebook parses as nbformat'
+
+          - script: |
+              cd $(PROJECT_DIR)
+              python helpers/check_requirements_pins.py
+            displayName: 'Check requirements.txt drift across four pin sites'
+
+  - stage: build
+    displayName: 'Build images (inference + airflow + mlflow + ray)'
+    dependsOn: validate
+    condition: succeeded()
+    jobs:
+      - job: build_all
+        displayName: 'docker build all four images'
+        steps:
+          # MIRRORED-IN: Jenkinsfile, cloudbuild.yaml. Keep the image list in sync.
+          - task: Docker@2
+            displayName: 'Build inference-api image'
+            inputs:
+              command: build
+              Dockerfile: '$(PROJECT_DIR)/infra/inference-api/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/inference-api'
+              tags: |
+                $(INFERENCE_IMAGE):$(Build.SourceVersion)
+                $(INFERENCE_IMAGE):latest
+                $(INFERENCE_IMAGE):smoke
+              addPipelineData: false
+
+          - task: Docker@2
+            displayName: 'Build airflow image'
+            inputs:
+              command: build
+              Dockerfile: '$(PROJECT_DIR)/infra/airflow/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/airflow'
+              tags: |
+                $(AIRFLOW_IMAGE):$(Build.SourceVersion)
+                $(AIRFLOW_IMAGE):latest
+              addPipelineData: false
+
+          - task: Docker@2
+            displayName: 'Build mlflow image'
+            inputs:
+              command: build
+              Dockerfile: '$(PROJECT_DIR)/infra/mlflow/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/mlflow'
+              tags: |
+                $(MLFLOW_IMAGE):$(Build.SourceVersion)
+                $(MLFLOW_IMAGE):latest
+              addPipelineData: false
+
+          - task: Docker@2
+            displayName: 'Build ray image'
+            inputs:
+              command: build
+              Dockerfile: '$(PROJECT_DIR)/infra/ray/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/ray'
+              tags: |
+                $(RAY_IMAGE):$(Build.SourceVersion)
+                $(RAY_IMAGE):latest
+              addPipelineData: false
+
+          - script: |
+              # Single-container smoke for the inference image. The
+              # image's own HEALTHCHECK polls /healthz so we wait for
+              # `docker inspect` to flip green. Even without MLflow
+              # upstream /healthz returns 503 rather than crashing,
+              # which is what "image starts cleanly" means here.
+              docker run --rm -d --name smoke -p 18099:8002 \
+                --health-cmd 'curl -fsS http://localhost:8002/redoc > /dev/null || exit 1' \
+                --health-interval 2s --health-retries 10 --health-timeout 2s \
+                -e MLFLOW_TRACKING_URI=http://no-mlflow:5000 \
+                $(INFERENCE_IMAGE):smoke
+              for _ in $(seq 1 30); do
+                STATE=$(docker inspect -f '{{.State.Health.Status}}' smoke 2>/dev/null || echo starting)
+                case "$STATE" in
+                  healthy)   echo "smoke healthy"; break ;;
+                  unhealthy) echo "smoke unhealthy"; docker logs smoke; exit 1 ;;
+                esac
+                sleep 2
+              done
+              docker logs smoke | tail -20
+              docker rm -f smoke >/dev/null
+            displayName: 'Inference image container smoke test'
+
+  # When a remote / manual run sets `skipSmoke=true` (typical for the
+  # @champion retrain trigger, which only needs build + publish), this
+  # stage short-circuits. `${{ parameters.skipSmoke }}` template-expands
+  # to `True` / `False`, so we string-compare against `'True'`.
+  - stage: e2e_smoke
+    displayName: 'End-to-end compose smoke'
+    dependsOn: build
+    condition: and(succeeded(), ne('${{ parameters.skipSmoke }}', 'True'))
+    jobs:
+      - job: compose_up
+        displayName: 'Boot no-GPU stack + curl /healthz'
+        timeoutInMinutes: 30
+        steps:
+          - script: |
+              cd $(PROJECT_DIR)/infra
+              # Hosted runners have no GPU and no Anthropic key, so fill the
+              # env with safe placeholders so compose can interpolate
+              # variables.
+              cat > .env <<EOF
+              POSTGRES_USER=mlops
+              POSTGRES_PASSWORD=ci-placeholder
+              POSTGRES_DB=airflow
+              AIRFLOW_ADMIN_USER=admin
+              AIRFLOW_ADMIN_PASSWORD=admin
+              AIRFLOW_ADMIN_EMAIL=ci@example.com
+              AIRFLOW_FERNET_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+              AIRFLOW_JWT_SECRET=$(openssl rand -hex 32)
+              AIRFLOW_UID=1000
+              HOST_IP=127.0.0.1
+              EOF
+
+              # `--wait` (compose ≥ 2.17) blocks until every named
+              # service is healthy and exits non-zero if any healthcheck
+              # fails, which replaces the per-service bash poll loop.
+              docker compose up -d --build --wait \
+                postgres mlflow inference-api
+              docker compose ps
+            displayName: 'Boot no-GPU subset of the stack'
+
+          - script: |
+              # Curl /healthz on every published service that's running.
+              # /redoc probes the FastAPI OpenAPI reference surface so
+              # we know the OpenAPI schema is being generated.
+              set -ex
+              curl -fsS http://localhost:5000/health
+              curl -fsS http://localhost:8002/healthz || \
+                echo "WARN: inference-api /healthz returns 503 when no @champion exists yet — that is expected on a clean DB"
+              curl -fsS http://localhost:8002/redoc | head -5
+            displayName: 'Curl /healthz on every service'
+
+          - script: |
+              cd $(PROJECT_DIR)/infra
+              docker compose logs --tail=200 inference-api mlflow postgres || true
+            displayName: 'Capture container logs'
+            condition: always()
+
+          - script: |
+              cd $(PROJECT_DIR)/infra
+              docker compose down -v
+            displayName: 'Tear down + wipe volumes'
+            condition: always()
+
+  - stage: publish
+    displayName: 'Publish all four images (only when ACR_NAME is set)'
+    dependsOn: build
+    condition: |
+      and(
+        succeeded(),
+        ne(variables['ACR_NAME'], '')
+      )
+    jobs:
+      - job: push_images
+        displayName: 'Push all four images to ACR'
+        steps:
+          # MIRRORED-IN: Jenkinsfile, cloudbuild.yaml. Keep the image list in sync.
+          - task: Docker@2
+            displayName: 'Build + push inference-api'
+            inputs:
+              command: buildAndPush
+              repository: $(INFERENCE_IMAGE)
+              Dockerfile: '$(PROJECT_DIR)/infra/inference-api/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/inference-api'
+              containerRegistry: 'medi-watch-registry'
+              tags: |
+                $(Build.SourceVersion)
+                latest
+
+          - task: Docker@2
+            displayName: 'Build + push airflow'
+            inputs:
+              command: buildAndPush
+              repository: $(AIRFLOW_IMAGE)
+              Dockerfile: '$(PROJECT_DIR)/infra/airflow/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/airflow'
+              containerRegistry: 'medi-watch-registry'
+              tags: |
+                $(Build.SourceVersion)
+                latest
+
+          - task: Docker@2
+            displayName: 'Build + push mlflow'
+            inputs:
+              command: buildAndPush
+              repository: $(MLFLOW_IMAGE)
+              Dockerfile: '$(PROJECT_DIR)/infra/mlflow/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/mlflow'
+              containerRegistry: 'medi-watch-registry'
+              tags: |
+                $(Build.SourceVersion)
+                latest
+
+          - task: Docker@2
+            displayName: 'Build + push ray'
+            inputs:
+              command: buildAndPush
+              repository: $(RAY_IMAGE)
+              Dockerfile: '$(PROJECT_DIR)/infra/ray/Dockerfile'
+              buildContext: '$(PROJECT_DIR)/infra/ray'
+              containerRegistry: 'medi-watch-registry'
+              tags: |
+                $(Build.SourceVersion)
+                latest
+
+  # Deploy stage: builds on the published images to roll the stack onto
+  # Kubernetes. This stage runs after `publish` succeeds on `main`,
+  # substitutes the build SHA into the `${IMAGE_TAG}` placeholder in
+  # every k8s manifest via `envsubst`, and applies them against the
+  # cluster bound to the KUBE_SERVICE_CONNECTION service connection.
+  # Then `rollout status` is awaited for each of the four deployments.
+  # If any image is missing at the SHA tag, rollout fails loudly
+  # instead of leaving an ImagePullBackOff in the cluster.
+  - stage: deploy
+    displayName: 'Deploy to Kubernetes'
+    dependsOn: publish
+    condition: |
+      and(
+        succeeded(),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+        ne(variables['KUBE_SERVICE_CONNECTION'], '')
+      )
+    jobs:
+      - deployment: kubectl_apply
+        displayName: 'kubectl apply infra/k8s/*.yaml'
+        environment: 'medi-watch-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    cd $(PROJECT_DIR)
+                    export IMAGE_TAG=$(Build.SourceVersion)
+                    echo "Stamping manifests with IMAGE_TAG=$IMAGE_TAG"
+                    mkdir -p .k8s-rendered
+                    for f in infra/k8s/airflow.yaml infra/k8s/inference-api.yaml infra/k8s/mlflow.yaml infra/k8s/ray.yaml; do
+                      envsubst < "$f" > ".k8s-rendered/$(basename "$f")"
+                    done
+                    echo "==> rendered manifests:"
+                    grep -nH "image: mlops-" .k8s-rendered/*.yaml
+                  displayName: 'Render manifests with envsubst'
+
+                - task: Kubernetes@1
+                  displayName: 'kubectl apply rendered manifests'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: $(KUBE_SERVICE_CONNECTION)
+                    namespace: $(coalesce(variables['DEPLOY_NAMESPACE'], 'medi-watch'))
+                    command: 'apply'
+                    arguments: '-f $(PROJECT_DIR)/.k8s-rendered/'
+
+                # Rollout-status the four deployments individually so an
+                # ImagePullBackOff on any of them fails the pipeline.
+                # Each deployment is awaited on its own, not just inference-api.
+                - task: Kubernetes@1
+                  displayName: 'Wait for rollout — inference-api'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: $(KUBE_SERVICE_CONNECTION)
+                    namespace: $(coalesce(variables['DEPLOY_NAMESPACE'], 'medi-watch'))
+                    command: 'rollout'
+                    arguments: 'status deployment/medi-watch-inference --timeout=5m'
+
+                - task: Kubernetes@1
+                  displayName: 'Wait for rollout — mlflow'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: $(KUBE_SERVICE_CONNECTION)
+                    namespace: $(coalesce(variables['DEPLOY_NAMESPACE'], 'medi-watch'))
+                    command: 'rollout'
+                    arguments: 'status deployment/mlflow --timeout=5m'
+
+                - task: Kubernetes@1
+                  displayName: 'Wait for rollout — airflow'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: $(KUBE_SERVICE_CONNECTION)
+                    namespace: $(coalesce(variables['DEPLOY_NAMESPACE'], 'medi-watch'))
+                    command: 'rollout'
+                    arguments: 'status deployment/airflow --timeout=5m'
+
+                - task: Kubernetes@1
+                  displayName: 'Wait for rollout — ray-head'
+                  inputs:
+                    connectionType: 'Kubernetes Service Connection'
+                    kubernetesServiceEndpoint: $(KUBE_SERVICE_CONNECTION)
+                    namespace: $(coalesce(variables['DEPLOY_NAMESPACE'], 'medi-watch'))
+                    command: 'rollout'
+                    arguments: 'status deployment/ray-head --timeout=5m'

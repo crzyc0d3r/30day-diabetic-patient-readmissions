@@ -1,0 +1,77 @@
+medi-watch local CI run
+captured: 2026-06-02T00:19:53Z  host: Linux 6.17.0-1021-nvidia aarch64
+commit:   68af5f7
+==================================================================
+
+########## A) REMOTE-TRIGGER HANDOFF (python infra/ci-cd/demo_remote_trigger.py) ##########
+=== 1) dry-run: the request the orchestration WOULD send, per provider ===
+
+[jenkins] POST https://ci.example.com/job/medi-watch/buildWithParameters?REASON=retrain_on_drift%3A+promote+%28scenario%3Dmixed_severe%29&SKIP_SMOKE=true&token=btok
+   headers: {'Authorization': 'Basic <redacted>'}
+   body:    (empty)
+
+[azure] POST https://dev.azure.com/acme/medi-watch/_apis/pipelines/42/runs?api-version=7.1-preview.1
+   headers: {'Authorization': 'Basic <redacted>', 'Content-Type': 'application/json'}
+   body:    {"resources": {"repositories": {"self": {"refName": "refs/heads/main"}}}, "templateParameters": {"reason": "retrain_on_drift: promote (scenario=mixed_severe)", "skipSmoke": true}}
+
+[cloudbuild] POST https://cloudbuild.googleapis.com/v1/projects/proj-1/triggers/medi-watch-trigger:run
+   headers: {'Authorization': 'Bearer <redacted>', 'Content-Type': 'application/json'}
+   body:    {"branchName": "main", "substitutions": {"_REASON": "retrain_on_drift: promote (scenario=mixed_severe)", "_SKIP_SMOKE": "true"}}
+
+=== 2) LIVE fire against a local mock CI server (Jenkins shape) ===
+
+trigger_remote_deploy() returned:
+{
+  "provider": "jenkins",
+  "status": 201,
+  "ok": true,
+  "url": "http://127.0.0.1:39881/job/medi-watch/buildWithParameters?REASON=retrain_on_drift%3A+promote+%28scenario%3Dmixed_severe%29&SKIP_SMOKE=true&token=demo-build-token",
+  "reason": "retrain_on_drift: promote (scenario=mixed_severe)",
+  "skip_smoke": true,
+  "response": "{\"queued\": true, \"build_number\": 42}"
+}
+
+what the mock CI server received:
+{
+  "method": "POST",
+  "path": "/job/medi-watch/buildWithParameters?REASON=retrain_on_drift%3A+promote+%28scenario%3Dmixed_severe%29&SKIP_SMOKE=true&token=demo-build-token",
+  "authorization": "Basic YWlyZmxvdy1kZXBsb3llcjpkZW1vLXRva2Vu",
+  "body": ""
+}
+
+OK: orchestration -> HTTP POST -> CI build job accepted (HTTP 201). Handoff verified.
+
+########## B) CI VALIDATE + SMOKE (infra/ci-cd/run_ci_local.sh) ##########
+[1m==== Validate :: requirements pin lockstep (5 sites) ====[0m
+package                   top-level     inference-api  ray-worker    airflow       ray-driver  
+-----------------------------------------------------------------------------------------------
+(no drift detected across the 5 pin sites)
+  [PASS] pins in lockstep
+[1m==== Validate :: ruff lint (advisory, matches CI advisory scope) ====[0m
+F541 [*] f-string without any placeholders
+E702 Multiple statements on one line (semicolon)
+E702 Multiple statements on one line (semicolon)
+E702 Multiple statements on one line (semicolon)
+E701 Multiple statements on one line (colon)
+E701 Multiple statements on one line (colon)
+E701 Multiple statements on one line (colon)
+E701 Multiple statements on one line (colon)
+E701 Multiple statements on one line (colon)
+E701 Multiple statements on one line (colon)
+E702 Multiple statements on one line (semicolon)
+E702 Multiple statements on one line (semicolon)
+F841 Local variable `n` is assigned to but never used
+F841 Local variable `real_import` is assigned to but never used
+  (advisory - not gating)
+[1m==== Validate :: structural pytest (no-model unit tests) ====[0m
+........................................................................ [ 80%]
+..................                                                       [100%]
+  [PASS] unit tests pass
+[1m==== Validate :: every pipeline notebook parses as nbformat ====[0m
+  9 notebooks parsed
+  [PASS] notebooks parse
+[1m==== Validate :: remote-trigger handoff demo (mock CI server) ====[0m
+  [PASS] Airflow->CI trigger verified
+[1m==== E2E smoke :: inference API /healthz on the running stack ====[0m
+  [PASS] inference-api healthy ({"status":"ok","model":{"model_name":"medi-watch-readmission","alias":"champion","version":"12"}})
+[32mCI LOCAL: PASS[0m

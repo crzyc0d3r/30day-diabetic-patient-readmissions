@@ -1,0 +1,31 @@
+# Library set for the isolated CPython 3.13.2 Ray-driver venv (/opt/ray-driver
+# inside the Airflow image, built in infra/airflow/Dockerfile).
+#
+# The retrain DAG's run_06_hyperparameter_tuning task runs under this
+# interpreter so the Ray *client* matches the cluster's CPython 3.13.2
+# (rayproject/ray:2.55.1-py313-gpu, see infra/ray/Dockerfile). Matching the
+# interpreter removes the "Python patch version mismatch" warning at the source.
+#
+# These versions must equal the upstream versions pinned across the other pin
+# sites (requirements.txt, infra/inference-api/requirements.txt,
+# infra/ray/Dockerfile, infra/airflow/requirements.txt). The cloudpickle
+# boundary between this driver and the Ray workers requires an exact library
+# match, not just an interpreter match. helpers/check_requirements_pins.py
+# guards all five sites together.
+#
+# torch is the plain CPU wheel 2.11.0 (the driver deserialises fitted models and
+# refits the best config locally, so it does not need the worker's +cu130 build).
+ray[client,tune]==2.55.1
+mlflow==3.11.1
+scikit-learn==1.8.0
+pandas==2.3.3
+numpy==2.4.4
+xgboost==3.2.0
+catboost==1.2.10
+joblib==1.5.3
+torch==2.11.0
+
+# Notebook execution for the prepare_data DAG (run_pipeline.py drives nbconvert).
+nbconvert==7.16.6
+nbformat==5.10.4
+ipykernel==6.30.1

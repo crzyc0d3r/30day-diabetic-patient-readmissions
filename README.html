@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>medi-watch · README</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&amp;family=IBM+Plex+Mono:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/></noscript>
+<style>
+  :root[data-theme="dark"] {
+    --bg:          #0a0a0d;
+    --bg-2:        #111116;
+    --bg-3:        #16161d;
+    --bg-4:        #20202a;
+    --bg-hi:       #1a1a24;
+
+    --ink:         #ededf2;
+    --ink-2:       #a8a8b4;
+    --ink-3:       #82828f; /* lifted from #6b6b78 to clear WCAG AA (≈5.2:1 on --bg) for the muted-label tier (.tok-c, .copy-btn, nav eyebrows, footer all inherit this) */
+    --muted:       #45454f;
+
+    --rule:        #20202a;
+    --rule-2:      #2c2c38;
+
+    --accent:      #5b9eff;
+    --accent-2:    #7eb6ff;
+    --accent-soft: rgba(91, 158, 255, 0.10);
+    --accent-line: rgba(91, 158, 255, 0.32);
+    --accent-glow: rgba(91, 158, 255, 0.06);
+    --select:      rgba(91, 158, 255, 0.22); /* soft selection tint - keeps text legible */
+
+    --green:       #4ade80;
+    --violet:      #a78bfa;
+    --rose:        #f472b6;
+    --amber:       #fbbf24;
+
+    --svg-card:    #14141c;
+    --svg-card-2:  #1b1b25;
+    --svg-card-ac: #131a28;
+    --svg-card-gr: #131c17;
+    --svg-card-vl: #1a1426;
+    --svg-text:    #ededf2;
+    --svg-meta:    #a8a8b4;
+    --svg-muted:   #6b6b78;
+    --svg-rule:    #2c2c38;
+    --svg-accent:  #5b9eff;
+    --svg-green:   #4ade80;
+    --svg-violet:  #a78bfa;
+
+    /* Neural-canvas cell detail (read by neural-mesh-background.js). Dark theme
+       uses screen blend, so these are LIGHT to show up as subtle highlights. */
+    --node-membrane: #e8e8f0;
+    --node-cell:     #f4f4ff;
+  }
+
+  :root[data-theme="light"] {
+    --bg:          #fbfbfc;
+    --bg-2:        #f3f3f6;
+    --bg-3:        #e9e9ee;
+    --bg-4:        #d8d8e0;
+    --bg-hi:       #eef2fa;
+
+    --ink:         #0a0a0d;
+    --ink-2:       #3a3a45;
+    --ink-3:       #5e5e6a; /* darkened from #6b6b78 to clear WCAG AA (≥4.5:1) on the light card backgrounds the muted tier sits on */
+    --muted:       #9a9aa6;
+
+    --rule:        #e0e0e7;
+    --rule-2:      #cdcdd6;
+
+    --accent:      #2563eb;
+    --accent-2:    #1d4fd1;
+    --accent-soft: rgba(37, 99, 235, 0.08);
+    --accent-line: rgba(37, 99, 235, 0.30);
+    --accent-glow: rgba(37, 99, 235, 0.05);
+    --select:      rgba(37, 99, 235, 0.14); /* soft selection tint - keeps text legible */
+
+    --green:       #16a34a;
+    --violet:      #7c3aed;
+    --rose:        #db2777;
+    --amber:       #d97706;
+
+    --svg-card:    #f3f3f6;
+    --svg-card-2:  #e9e9ee;
+    --svg-card-ac: #e0eaff;
+    --svg-card-gr: #dcf3e3;
+    --svg-card-vl: #e9e0fa;
+    --svg-text:    #0a0a0d;
+    --svg-meta:    #3a3a45;
+    --svg-muted:   #6b6b78;
+    --svg-rule:    #d0d0d8;
+    --svg-accent:  #2563eb;
+    --svg-green:   #16a34a;
+    --svg-violet:  #7c3aed;
+
+    /* Light theme uses MULTIPLY blend, so light detail colors would vanish.
+       These are DARK so membranes/granules read as subtle specks on the light
+       cytoplasm - preserving the biological texture across both themes. */
+    --node-membrane: #4a4a55;
+    --node-cell:     #5b5b66;
+  }
+
+  :root {
+    --display: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --body:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:    "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+    --nav-w:   240px; /* Deliberately narrow: this is a short two-section README with only
+                         three index links, so the sidebar is intentionally minimal chrome.
+                         A longer document would justify widening this back toward 270px. */
+
+    /* Primary spacing scale: 4 / 8 / 12 / 16 / 20 / 24 / 32 / 48 / 56 / 64 / 72 / 80 / 88 px */
+
+    /* Single source of truth for content width. Every wide block (grids, code,
+       callouts, tables) obeys --content-max so blocks share one left+right edge.
+       Prose paragraphs additionally cap at a readable measure (see .prose p).
+       --gutter is the section side padding; section outer = content + 2·gutter. */
+    --content-max: 1080px;
+    --gutter:      80px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; overflow-x: clip; } /* clip horizontal overflow at the viewport so the off-canvas (position:fixed) mobile nav drawer can't induce a sideways scroll; clip (not hidden) leaves position:sticky working */
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px; /* web body baseline (was 15px) */
+    font-weight: 400;
+    line-height: 1.7; /* slightly looser to keep the now-wider prose measure comfortable */
+    font-feature-settings: "kern", "liga";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    overflow-x: clip; /* paired with the html overflow-x:clip above; both are needed to fully contain the off-canvas fixed nav drawer's width on mobile (viewport/ICB overflow-propagation quirk). clip (not hidden) keeps position:sticky working. */
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+
+  ::selection { background: var(--select); color: var(--ink); } /* soft tint, not a full-accent flash */
+
+  .shell {
+    display: grid;
+    grid-template-columns: 1fr var(--nav-w);
+    min-height: 100vh;
+  }
+
+  aside.nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    border-left: 1px solid var(--rule);
+    padding: 20px 18px 32px; /* tightened in line with reduced nav width */
+    background: var(--bg);
+    order: 2;
+    box-shadow: -1px 0 0 var(--rule); /* subtle separation from main content */
+  }
+  aside.nav::-webkit-scrollbar { width: 6px; }
+  aside.nav::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 3px; }
+  aside.nav::-webkit-scrollbar-track { background: transparent; }
+
+  .nav-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-glyph {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    color: var(--bg);
+    border-radius: 6px;
+    display: grid; place-items: center;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+  }
+  .brand-name {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .brand-name span {
+    display: block;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-top: 4px; /* on-scale (was 3px) */
+    font-weight: 400;
+  }
+
+  .theme-toggle {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    color: var(--ink-2);
+    width: 40px; height: 40px; /* up from 34px toward the 44px touch-comfort size */
+    border-radius: 6px;
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: all 160ms ease;
+    padding: 0;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  /* Keyboard focus uses the same accent language as the rest of the UI. */
+  .theme-toggle:focus-visible,
+  .mobile-toggle:focus-visible,
+  .nav-list a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  /* Single adaptive theme icon - one SVG, driven entirely by [data-theme]
+     (no second element, no JS DOM swap), matching the token-driven canvas.
+     A mask-cutter circle carves the sun disc into a crescent for dark mode;
+     the sun rays fade out. Light mode slides the cutter off-disc and shows rays. */
+  .theme-icon { width: 16px; height: 16px; color: var(--ink-2); display: block; }
+  .theme-toggle:hover .theme-icon { color: var(--accent); }
+  .theme-icon .moon-cut {
+    transform: translate(0, 0); /* base: cutter carves the crescent (dark) */
+    /* Gentler overshoot than v9's (0.5,1.6,0.4,1): a small spring that still
+       reads as lively on first toggle but no longer fights the page's restraint. */
+    transition: transform 320ms cubic-bezier(0.5, 1.25, 0.4, 1);
+  }
+  .theme-icon .sun-rays {
+    opacity: 0; /* hidden in dark (moon) */
+    transform: scale(0.7); /* narrower delta (was 0.6) → calmer ray bloom on toggle */
+    transform-box: fill-box;   /* so transform-origin:center is the rays' own box */
+    transform-origin: center;
+    transition: opacity 240ms ease, transform 320ms ease;
+  }
+  [data-theme="light"] .theme-icon .moon-cut { transform: translate(12px, -8px); } /* slide cutter off → full sun */
+  [data-theme="light"] .theme-icon .sun-rays { opacity: 1; transform: scale(1); }
+  @media (prefers-reduced-motion: reduce) {
+    .theme-icon .moon-cut, .theme-icon .sun-rays { transition: none; }
+  }
+
+  .nav-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 24px 0 8px;
+    font-weight: 500;
+  }
+  .nav-eyebrow:first-of-type { margin-top: 0; }
+
+  .nav-list { list-style: none; padding: 0; margin: 0 0 4px; }
+  .nav-list li { margin: 0; }
+  .nav-list a {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+    padding: 6px 10px;
+    margin: 0 -10px;
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1.4;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    transition: all 120ms ease;
+    font-weight: 450;
+  }
+  .nav-list a:hover { color: var(--ink); background: var(--bg-2); }
+  .nav-list a.active {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .nav-list a.active .num { color: var(--accent); }
+  .nav-list .num {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.06em;
+    padding-top: 2px;
+    font-weight: 500;
+  }
+
+  main.doc { padding: 0; min-width: 0; order: 1; }
+
+  /* Section outer = content width + two gutters, so the inner usable width is
+     exactly --content-max. Vertical padding tuned DOWN for a 3-section doc: the
+     spacing scale is a max, not a default - 72px felt sparse for this volume. */
+  .section {
+    padding: 56px var(--gutter);
+    max-width: calc(var(--content-max) + 2 * var(--gutter));
+    margin: 0 auto;
+    border-bottom: 1px solid var(--rule);
+    scroll-margin-top: 24px;
+  }
+  .section:last-child { border-bottom: 0; }
+
+  /* Consistent section dividers - all sections use the standard bottom border */
+  @media (max-width: 1200px) { .section { padding: 48px 56px; } }
+  @media (max-width: 760px)  { .section { padding: 40px 24px; } }
+
+  .hero {
+    padding: 72px var(--gutter) 32px; /* tighter bottom: hero content is light, let s1 arrive sooner */
+    max-width: calc(var(--content-max) + 2 * var(--gutter));
+    margin: 0 auto;
+    position: relative;
+    border-bottom: 1px solid var(--rule);
+    overflow: hidden;
+  }
+  /* Hero background: the fixed neural canvas (#neural-bg) is the sole treatment. */
+
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 32px;
+    padding: 6px 12px;
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    background: var(--accent-soft);
+  }
+  .hero-eyebrow::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(40px, 5.5vw, 72px);
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    margin: 0 0 24px; /* on-scale (was 28px) */
+    color: var(--ink);
+    max-width: 22ch;
+  }
+  .hero h1 .accent { color: var(--accent); font-weight: 500; }
+  .hero h1 .light  { font-weight: 300; color: var(--ink-2); }
+
+  .hero-deck {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 680px;
+    margin: 0 0 32px; /* on-scale (was 40px) */
+    font-weight: 380;
+  }
+  .hero-deck b { color: var(--ink); font-weight: 500; }
+
+  /* "At a glance" strip: a hairline rule + three mono label/value pairs. Gives the
+     hero scanning value and a little visual mass without boxes or fills - the
+     lightest way to make the generous hero padding feel intentional. */
+  .hero-facts {
+    display: flex;
+    flex-wrap: wrap;
+    /* Column gap is fluid: 48px on wide viewports, easing down toward 24px as the
+       row narrows, so the spacing tightens gradually instead of snapping at one
+       breakpoint. Row gap (when facts wrap) stays a fixed 24px. */
+    gap: 24px clamp(24px, 4vw, 48px);
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    max-width: var(--content-max);
+  }
+  .hero-fact { display: flex; flex-direction: column; gap: 8px; }
+  .hero-fact .k {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .hero-fact .v {
+    font-family: var(--display);
+    font-size: 15.5px; /* nudged up from 15px so the values sit a half-step closer to the deck */
+    font-weight: 500;
+    color: var(--ink); /* explicit (not inherited) - keeps full definition against the hairline rule */
+    letter-spacing: -0.01em;
+  }
+
+  @media (max-width: 900px) {
+    .hero { padding: 56px 24px 32px; }
+  }
+  /* Below 640px the facts have usually wrapped; pull the row gap and the top
+     padding in further so the stacked "rule + items" block stays compact. The
+     column gap is already handled fluidly by the clamp() above - this only adds
+     the small-screen padding/row tightening that clamp can't express. */
+  @media (max-width: 640px) {
+    .hero-facts { gap: 16px clamp(24px, 4vw, 48px); padding-top: 20px; margin-top: 24px; }
+  }
+
+  .opener {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 32px;
+    align-items: baseline;
+    margin-bottom: 32px; /* aligned to documented spacing scale */
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .opener .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .opener h2 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(26px, 3.2vw, 38px);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    margin: 0;
+    color: var(--ink);
+    max-width: 28ch;
+  }
+  .opener h2 .light  { font-weight: 300; color: var(--ink-2); }
+  .opener h2 .accent { color: var(--accent); }
+  @media (max-width: 760px) {
+    .opener { grid-template-columns: 1fr; gap: 12px; }
+  }
+
+  /* The prose CONTAINER spans the full --content-max so it shares one left edge
+     with every block (grids, code, tables). Paragraph TEXT, however, caps at a
+     readable ~72ch measure - long lines at 15px/1.7 hurt readability, especially
+     in light theme. Net: blocks align edge-to-edge; running text stays comfortable. */
+  .prose {
+    max-width: var(--content-max);
+  }
+  .prose p {
+    margin: 0 0 20px; /* paragraph rhythm: one notch below the 24px block gap, deliberately between 16 and 24 */
+    color: var(--ink);
+    max-width: 72ch; /* readable measure (text only - blocks still span full width) */
+  }
+  .prose p.lead {
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--ink);
+    margin-bottom: 24px; /* on-scale (was 28px) */
+    font-weight: 400;
+    max-width: 72ch;
+  }
+  .prose p strong, .prose p b { font-weight: 600; color: var(--ink); }
+
+  .prose h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 1.3;
+    margin: 48px 0 16px; /* on-scale (was 14px) */
+    color: var(--ink);
+    letter-spacing: -0.015em;
+    display: flex;
+    align-items: baseline;
+    gap: 12px; /* tightened from 14px */
+  }
+  .prose h3::before {
+    content: counter(sec-h3, decimal-leading-zero);
+    counter-increment: sec-h3;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    font-weight: 500;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums; /* even-width digits so counters align */
+  }
+  .section { counter-reset: sec-h3; }
+
+  .prose code, .inline {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--bg-3);
+    color: var(--accent);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+    font-weight: 500;
+    overflow-wrap: anywhere; /* let long unbreakable code tokens (e.g. file paths) wrap instead of forcing horizontal page overflow on mobile */
+  }
+
+  pre.code {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.55; /* tightened to better match the capped 72ch prose rhythm */
+    background: var(--bg-2);
+    color: var(--ink);
+    padding: 22px 24px 22px 24px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 24px 0 32px;
+    position: relative;
+    max-width: var(--content-max);
+  }
+  pre.code::before {
+    content: attr(data-shell);
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  pre.code code { background: transparent; padding: 0; border: 0; color: var(--ink); font-weight: 400; }
+  .tok-c  { color: var(--ink-3); }
+  .tok-k  { color: var(--accent); }
+  .tok-s  { color: var(--green); }
+  .tok-v  { color: var(--violet); }
+
+  /* Copy controls - on every code block and the two install command chips.
+     In a code block this replaces the old data-shell "bash" label in the
+     top-right with a one-tap copy button. All token-driven, so it tracks
+     both themes; the .copied state flips to the green success token. */
+  .copy-btn {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--ink-3);
+    background: var(--bg-3);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 6px 10px;
+    min-height: 28px; /* clears the 24px WCAG 2.5.8 tap-target floor on mobile (was 23px tall) */
+    cursor: pointer;
+    transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+  }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent-line); }
+  .copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .copy-btn.copied { color: var(--green); border-color: var(--green); }
+  /* Pinned top-right of a code block. */
+  pre.code .copy-btn { position: absolute; top: 10px; right: 12px; z-index: 1; }
+
+  /* Install-card command chip: a mono command line with the copy control on
+     the right, boxed so the command reads as one discrete, copyable unit. */
+  .cmd-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 8px 8px 8px 12px;
+    background: var(--bg-3);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+  }
+  .cmd-line code { color: var(--ink); flex: 1; min-width: 0; word-break: break-word; }
+  .cmd-line .copy-btn { flex: 0 0 auto; }
+
+  .grid-2, .grid-3 {
+    display: grid;
+    gap: 16px;
+    margin: 24px 0 32px; /* consistent with documented spacing scale */
+    max-width: var(--content-max);
+    grid-auto-rows: 1fr; /* force equal height rows for consistent card appearance */
+  }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 1000px) { .grid-3 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 760px)  {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    /* Equal-height only matters while cards are side by side; once stacked,
+       let content govern so single-column cards aren't needlessly tall. */
+    .grid-2 .cell, .grid-3 .cell { min-height: auto; }
+  }
+
+  /* Reusable transition helpers - all values drawn from the documented spacing
+     scale (4/8/12/16/20/24/32/48/...). Use to tune the gap between a block of
+     .prose and the element that follows it (e.g. a grid or table) without
+     introducing one-off margins. */
+  .flow-24 { margin-top: 24px; }
+  .flow-32 { margin-top: 32px; }
+  .flow-tight { margin-top: 16px; }
+
+  .cell {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 24px;
+    position: relative;
+    transition: all 160ms ease;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 150px; /* baseline height so side-by-side cards stay even (lifted on mobile) */
+  }
+  .cell::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 0; height: 2px;
+    background: var(--accent);
+    transition: width 260ms ease;
+  }
+  .cell:hover { border-color: var(--accent-line); background: var(--bg-3); }
+  .cell:hover::before { width: 100%; }
+  .cell .cell-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+  .cell h4 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 18px;
+    line-height: 1.2;
+    margin: 0 0 10px;
+    color: var(--ink);
+    letter-spacing: -0.015em;
+  }
+  .cell p { 
+    margin: 0; 
+    font-size: 14px; 
+    line-height: 1.55; 
+    color: var(--ink-2); 
+    flex: 1; /* allows the description to grow when the card is forced taller by min-height */
+  }
+
+  /* Featured / standalone cards (e.g. the final docs link) */
+  .cell.featured {
+    max-width: none;
+    border-color: var(--accent-line);
+    border-left: 4px solid var(--accent);
+    border-top: 1px solid var(--accent-line); /* extra visual cue */
+    padding-left: 20px;
+    background: var(--bg-hi);
+  }
+  .cell.featured h4 {
+    font-weight: 600;
+  }
+  /* Top-right cue so the featured card reads as deliberately "featured" on a quick
+     scan - a north-east arrow signalling this card opens the full document. */
+  .cell.featured::after {
+    content: "\2197"; /* ↗ */
+    position: absolute;
+    top: 20px; right: 22px; /* aligned with the card's padding so it sits inside the safe area */
+    font-family: var(--mono);
+    font-size: 16px;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.7;
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .cell.featured:hover::after {
+    opacity: 1;
+    transform: translate(2px, -2px);
+  }
+  .cell code { font-size: 12.5px; }
+
+  /* Figures: embedded screenshots and the architecture diagram. */
+  figure.figure { margin: 24px 0 32px; max-width: var(--content-max); }
+  .shot {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--bg-2);
+  }
+  .figcap {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 12px 0 0;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .figcap b { color: var(--accent); font-weight: 600; }
+  .figrid {
+    display: grid;
+    gap: 16px;
+    margin: 24px 0 32px;
+    max-width: var(--content-max);
+    grid-template-columns: repeat(2, 1fr);
+  }
+  @media (max-width: 760px) { .figrid { grid-template-columns: 1fr; } }
+  .figrid figure { margin: 0; }
+  .arch {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--bg-2);
+    padding: 20px 24px;
+    margin: 24px 0 32px;
+    max-width: var(--content-max);
+    overflow-x: auto;
+  }
+  .arch svg { display: block; width: 100%; height: auto; min-width: 660px; }
+
+  .tbl-wrap { overflow-x: auto; max-width: var(--content-max); margin: 24px 0 32px; /* consistent with documented spacing scale */ }
+  table.tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    min-width: 720px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-2);
+  }
+  table.tbl caption {
+    caption-side: top;
+    text-align: left;
+    font-size: 13.5px;
+    color: var(--ink-2);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  table.tbl caption b {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  table.tbl thead th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 14px 18px;
+    background: var(--bg-3);
+    border-bottom: 1px solid var(--rule);
+  }
+  table.tbl tbody td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  table.tbl tbody tr:last-child td { border-bottom: 0; }
+  table.tbl tbody td:first-child {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  table.tbl tbody tr:hover td { background: var(--bg-hi); }
+
+  ol.numbered {
+    list-style: none;
+    counter-reset: ol-c;
+    padding: 0;
+    margin: 24px 0 32px; /* unified with other content blocks (was 20px/28px) */
+    max-width: 720px;
+  }
+  ol.numbered li {
+    counter-increment: ol-c;
+    padding: 14px 0 14px 52px;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+    line-height: 1.55;
+    font-size: 14.5px;
+    color: var(--ink);
+  }
+  ol.numbered li:last-child { border-bottom: 0; }
+  ol.numbered li::before {
+    content: counter(ol-c, decimal-leading-zero);
+    position: absolute;
+    left: 0; top: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 24px 0 32px;
+    max-width: var(--content-max);
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 16px;
+  }
+  .callout::before {
+    content: "→";
+    font-family: var(--mono);
+    color: var(--accent);
+    font-size: 18px;
+    line-height: 1;
+    padding-top: 2px;
+  }
+  .callout p { margin: 0; color: var(--ink); font-size: 14.5px; }
+  .callout b { color: var(--accent); font-weight: 600; }
+
+  .prose a, .cell a, .callout a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid var(--accent-line);
+    transition: border-color 140ms ease;
+  }
+  .prose a:hover, .cell a:hover, .callout a:hover { border-bottom-color: var(--accent); }
+
+  /* Footer: multi-line columns, left/right split, with a hairline divider down
+     the middle. Footer outer width matches a section (content + 2 gutters) so its
+     edges line up with the content above. Reduced top padding for this short doc. */
+  .footer {
+    padding: 40px var(--gutter) 56px;
+    max-width: calc(var(--content-max) + 2 * var(--gutter));
+    margin: 0 auto;
+    border-top: 1px solid var(--rule);
+    font-size: 13.5px;
+    color: var(--ink-3);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 24px 48px;
+  }
+  .footer .left {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 4px;
+    line-height: 1.5;
+  }
+  .footer .left .dot {
+    width: 8px; height: 8px;
+    margin-top: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+  }
+  .footer .left .lines { display: flex; flex-direction: column; }
+  .footer .left .lines b {
+    font-family: var(--display);
+    font-weight: 600;
+    color: var(--ink-2);
+    letter-spacing: -0.005em;
+  }
+  /* Hairline divider between the two columns (hidden once the footer wraps). */
+  .footer .right {
+    text-align: right;
+    line-height: 1.5;
+    padding-left: 48px;
+    border-left: 1px solid var(--rule);
+  }
+  .footer .right .name {
+    font-family: var(--display);
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .footer .right a {
+    color: var(--ink-3);
+    text-decoration: none;
+    border-bottom: 1px solid var(--rule-2);
+    display: inline-block;
+    padding: 3px 0; /* lift the tap target above the 24px floor on mobile (was 19px tall) */
+    transition: color 140ms ease, border-color 140ms ease;
+  }
+  .footer .right a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .footer .right .rights {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-top: 4px;
+  }
+  @media (max-width: 760px) {
+    .footer .right { text-align: left; padding-left: 0; border-left: 0; }
+  }
+
+
+  .mobile-toggle {
+    display: none;
+    position: fixed;
+    top: 14px; right: 14px;
+    z-index: 50;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  .mobile-toggle:hover {
+    background: var(--bg-3);
+    border-color: var(--accent-line);
+  }
+  @media (max-width: 980px) {
+    .shell { grid-template-columns: 1fr; }
+    aside.nav {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: 320px;
+      transform: translateX(100%);
+      transition: transform 220ms ease;
+      z-index: 40;
+      background: var(--bg);
+      border-left: 1px solid var(--rule);
+      box-shadow: -8px 0 20px rgba(0,0,0,0.25);
+    }
+    aside.nav.open { transform: translateX(0); }
+    .mobile-toggle { display: flex; }
+    .mobile-toggle.open { display: none !important; }
+    .hero h1 { font-size: 48px; }
+    /* Comfort-size the index links in the touch drawer (≈44px tall) without
+       changing the compact desktop sidebar. */
+    .nav-list a { padding-top: 13px; padding-bottom: 13px; }
+  }
+  </style>
+</head>
+<body>
+<!-- Neural mesh background: protons & electrons of a neural net talking to each other.
+     Inspired by the animated field on https://build.nvidia.com/spark
+     Self-contained. Respects theme + reduced motion. -->
+<canvas id="neural-bg" aria-hidden="true" title="Subtle pancreatic islet cell signaling background"></canvas>
+<style>
+  #neural-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.18;                 /* global default - raised a bit for more presence (still readable) */
+    mix-blend-mode: screen;
+    transition: opacity 180ms ease;
+  }
+  [data-theme="light"] #neural-bg {
+    opacity: 0.13;
+    mix-blend-mode: multiply;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #neural-bg { opacity: 0.18; }
+  }
+
+  /* Two-tier readability hook (wired up by the script near the end of <body>):
+       .dense-prose  - a text-heavy section is in view        → calmer canvas
+       .ultra-dense  - a section with code (pre.code) OR a     → calmest canvas
+                       table (table.tbl) is in view; this is
+                       where the eye is working hardest
+     Tiers: default 0.18 → dense 0.15 → ultra 0.12 (dark);
+            default 0.13 → dense 0.08 → ultra 0.06 (light). */
+  body.dense-prose #neural-bg { opacity: 0.15; }
+  body.ultra-dense #neural-bg { opacity: 0.12; }
+  [data-theme="light"] body.dense-prose #neural-bg { opacity: 0.08; }
+  [data-theme="light"] body.ultra-dense #neural-bg { opacity: 0.06; }
+
+  /* Ensure main content sits above the neural background canvas.
+     We intentionally do not touch aside.nav here - it manages its own z-index
+     (sticky on desktop, 40 on mobile drawer) and we don't want to override it. */
+  .shell { z-index: 1; }
+</style>
+<div class="shell">
+<main class="doc">
+<!-- ============ HERO ============ -->
+<section class="hero" id="hero">
+<div class="hero-eyebrow">readme · capstone</div>
+<h1>
+<span class="light">An MLOps platform for</span>
+<span class="accent">thirty‑day</span>
+        readmission.
+      </h1>
+<p class="hero-deck">
+<b>medi-watch</b> predicts thirty-day hospital readmission for diabetic patients, end to end. The training and retraining loop beneath it runs on MLflow, Airflow, and Ray Tune, instrumented through Prometheus and Grafana.
+      </p>
+<div class="hero-facts">
+<div class="hero-fact"><span class="k">Orchestration</span><span class="v">MLflow · Airflow · Ray Tune</span></div>
+<div class="hero-fact"><span class="k">Pipeline</span><span class="v">Notebooks 01–09</span></div>
+<div class="hero-fact"><span class="k">Telemetry</span><span class="v">Prometheus · Grafana</span></div>
+</div>
+</section>
+<!-- ============ SECTION 01 - FROM ZERO TO READMISSION PREDICTION ============ -->
+<section class="section" id="s1">
+<div class="opener">
+<div class="num">Section 01</div>
+<h2><span class="light">From Zero to</span> <span class="accent">Prediction Inference</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  Create the Python environment, then install the <code>medi-watch</code> command.
+</p>
+</div>
+<div class="prose">
+<h3>uv</h3>
+<p><code>uv</code> reads <code>.python-version</code> natively and downloads CPython 3.13.2 if it isn't already present.</p>
+</div>
+<pre class="code"><code><span class="tok-c"># 1 - install uv (once)</span>
+curl -LsSf https://astral.sh/uv/install.sh | sh
+exec $SHELL          <span class="tok-c"># reload PATH</span>
+
+<span class="tok-c"># 2 - in the repo: uv reads .python-version automatically</span>
+cd medi-watch
+uv venv              <span class="tok-c"># creates .venv on the pinned 3.13.2</span>
+source .venv/bin/activate
+uv pip install -r requirements.txt</code></pre>
+<div class="callout">
+<p><code>requirements.txt</code> pins wheels (<code>torch</code>, <code>xgboost</code>, <code>catboost</code>, <code>mlflow</code>, …) and installs CPU-only by default: the CUDA lines are commented out. The pin set is mirrored in five sites that must stay in lockstep (see the <code>requirements.txt</code> header). After bumping anything, run <code>python helpers/check_requirements_pins.py</code>. A stale <code>.venv-test/</code> built on 3.12.3 may exist. Delete or ignore it, since it does not match the pin.</p>
+</div>
+<div class="prose">
+<h3>Install the medi-watch shim</h3>
+<p>With the environment active, one command puts <code>medi-watch</code> on your <code>PATH</code>. You also need <code>Docker</code> and <code>Docker Compose v2</code>. <code>CUDA 12+</code> is only for the optional GPU / Driftly profile, since the core stack runs on CPU.</p>
+</div>
+<div class="cell">
+<div class="cell-tag">install · linux/macOS</div>
+<h4>mediwatch.sh</h4>
+<div class="cmd-line"><code>sudo ./mediwatch.sh install</code></div>
+<p>Registers the shim, then run <code>medi-watch &lt;command&gt; [--option]</code> from anywhere.</p>
+</div>
+<pre class="code"><code><span class="tok-c"># from the repository root, after running the install script:</span>
+
+medi-watch help                 <span class="tok-c"># confirm the shim resolved</span>
+
+<span class="tok-c"># 2 - green-light host, Python env, Docker, and infra/.env</span>
+medi-watch doctor
+
+<span class="tok-c"># 3 - bring the compose stack up (MLflow, Airflow, Ray, inference API, ...)</span>
+medi-watch init
+
+<span class="tok-c"># 4 - run the data-prep notebooks 01..05 on the host</span>
+medi-watch run
+
+<span class="tok-c"># 5 - orchestrate HPO, training, and champion registration through Airflow</span>
+medi-watch retrain</code></pre>
+<div class="prose">
+<p>After <code>run</code> builds the data-prep artifacts, <code>retrain</code>
+        drives the orchestrated HPO, training, and three-gate champion
+        registration through Airflow. The inference API then serves the
+        registered champion, and a fresh checkout has become a live thirty-day
+        readmission predictor. Everything past this point is operation, detail,
+        and depth.</p>
+</div>
+<div class="callout">
+<p><b>Re-runs are safe.</b> Install is idempotent: pointed at this checkout, it reports <code>already installed</code> and exits clean. Pointed at a different file or another checkout, it refuses and asks you to run <code>./mediwatch.sh install --uninstall</code> first, which removes the shim from both canonical paths.</p>
+</div>
+</section>
+<!-- ============ SECTION 02 - THE CLI ============ -->
+<section class="section" id="s2">
+<div class="opener">
+<div class="num">Section 02</div>
+<h2><span class="light">One Verb at a Time:</span> <span class="accent">the medi-watch CLI</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  The <code>mediwatch.sh</code> shim is the single front door to the platform. Every lifecycle action, from a first-boot health check to tearing the whole stack down, is one verb.
+</p>
+<p>The dispatcher is platform aware. It detects Linux, macOS, and Windows hosts, probes for an NVIDIA GPU with <code>nvidia-smi</code>, and silently merges the <code>docker-compose.gpu.yml</code> overlay onto Ray when accelerators are present. Run with no arguments inside a terminal and it enters an interactive lifecycle mode that walks you through <code>init</code>, <code>train</code>, and <code>retrain</code> in sequence. The current shim reports version <code>1.0.900</code>.</p>
+</div>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>commands</b> ./mediwatch.sh <command> [options]</caption>
+<thead><tr><th>Command</th><th>What it does</th><th>Notable options</th></tr></thead>
+<tbody>
+<tr><td>doctor</td><td>Audits host prerequisites (Docker, Compose v2, Git, Python), Python environment drift, and the <code>infra/.env</code> file, then offers an interactive autofix.</td><td><code>--yes</code> auto-accept, <code>--no-fix</code> audit only</td></tr>
+<tr><td>init</td><td>Runs the preflight audit, then brings the full Docker Compose stack up: Postgres, Airflow, MLflow, Ray, Prometheus, Grafana, the inference API, and Driftly.</td><td><code>--reset</code>, <code>--no-fix</code></td></tr>
+<tr><td>install</td><td>Registers the <code>medi-watch</code> shim on your <code>PATH</code> under <code>~/.local/bin</code> or <code>/usr/local/bin</code>.</td><td><code>--user</code> no sudo, <code>--uninstall</code></td></tr>
+<tr><td>train · run</td><td>Executes the data-preparation notebooks 01 through 05 on the host: overview, cleaning, exploratory analysis, feature engineering, and the split or encode or scale stage.</td><td><code>--from</code>, <code>--to</code>, <code>--reset</code></td></tr>
+<tr><td>retrain</td><td>Triggers the Airflow <code>retrain_on_drift</code> DAG, which runs tuning, training, and registration inside the containers (notebooks 06 through 08).</td><td>None</td></tr>
+<tr><td>drift</td><td>Stages a simulated incoming batch and triggers the <code>scheduled_drift_check</code> DAG, which auto-retrains when the verdict is ALERT.</td><td>None</td></tr>
+<tr><td>activate</td><td>Serve-only mode. Brings up the minimal stack of Postgres, MLflow, and the inference API, with no Airflow or Ray.</td><td>None</td></tr>
+<tr><td>k8s · k8</td><td>Applies the <code>infra/k8s/*.yaml</code> manifests to the current kubectl context.</td><td><code>--build</code>, <code>--reset</code></td></tr>
+<tr><td>shutdown</td><td>Halts the running containers.</td><td><code>--reset</code> wipes volumes, images, and <code>data/</code>, plus <code>--yes</code></td></tr>
+<tr><td>help</td><td>Prints usage. Also reachable as <code>-h</code> and <code>--help</code>.</td><td>None</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- ============ SECTION 03 - MODELING PIPELINE ============ -->
+<section class="section" id="s3">
+<div class="opener">
+<div class="num">Section 03</div>
+<h2><span class="light">Raw CSV to a</span> <span class="accent">Registered Champion</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  The pipeline is nine sequential notebooks. The first five prepare data and the last four search, train, select, and probe. An orchestrator, <code>pipeline/run_pipeline.py</code>, drives them all.
+</p>
+<p>The orchestrator splits the run in two. Notebooks 01 through 05 run through <code>nbconvert</code> with an <code>ExecutePreprocessor</code>, because their output is the human-readable narrative of the data. Notebooks 06 through 08 instead call library functions directly, which runs roughly ten times faster than spinning up a Jupyter kernel for each. You can scope a run with <code>--from</code> and <code>--to</code>, wipe intermediate artifacts with <code>--reset</code>, or raise the per-cell <code>--timeout</code> for long fits.</p>
+</div>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>pipeline</b> pipeline/01..09</caption>
+<thead><tr><th>Notebook</th><th>Stage</th><th>Principal output</th></tr></thead>
+<tbody>
+<tr><td>01 overview</td><td>Problem statement and cohort introduction</td><td>Dataset summary, cohort statistics</td></tr>
+<tr><td>02 cleaning</td><td>Raw CSV to a cleaned cohort</td><td><code>data/cleaned.csv</code></td></tr>
+<tr><td>03 EDA</td><td>Systematic survey of distributions and target relationships</td><td>Effect sizes, confidence intervals</td></tr>
+<tr><td>04 feature engineering</td><td>Feature creation and enrichment</td><td><code>data/features.csv</code> (drift reference)</td></tr>
+<tr><td>05 split · encode · scale</td><td>Train, validation, test partition and preprocessing</td><td><code>train_test.npz</code>, OHE, scaler, selector</td></tr>
+<tr><td>06 tuning</td><td>Ray Tune search, five models</td><td><code>tuned_results.joblib</code></td></tr>
+<tr><td>07 training</td><td>Fit default and tuned-refit models</td><td><code>training_models.joblib</code>, per-model thresholds</td></tr>
+<tr><td>08 conclusion</td><td>Leaderboard, champion pick, registration</td><td><code>final_model.joblib</code>, MLflow <code>@champion</code></td></tr>
+<tr><td>09 drift simulation</td><td>Synthesise five drift scenarios</td><td><code>data/incoming/{scenario}.csv</code></td></tr>
+</tbody>
+</table>
+</div>
+<div class="prose">
+<h3>Five model families, two fits each</h3>
+<p>Every family is fit twice: once with sensible defaults and once with the configuration the search judged best. All five carry an explicit treatment for the roughly eleven percent positive class.</p>
+</div>
+<div class="grid-3">
+<div class="cell"><div class="cell-tag">gradient boosting</div><h4>XGBoost</h4><p>Histogram tree method, CUDA device when a GPU is present, and <code>scale_pos_weight</code> set for the class imbalance.</p></div>
+<div class="cell"><div class="cell-tag">gradient boosting</div><h4>CatBoost</h4><p>Balanced auto class weights and a GPU task type when available, single-threaded for deterministic trials.</p></div>
+<div class="cell"><div class="cell-tag">linear</div><h4>Logistic Regression</h4><p>The sklearn estimator with balanced class weights, the interpretable baseline.</p></div>
+<div class="cell"><div class="cell-tag">ensemble</div><h4>Random Forest</h4><p>A balanced-weight forest, robust to feature scaling and a useful non-linear reference point.</p></div>
+<div class="cell"><div class="cell-tag">neural</div><h4>PyTorch MLP</h4><p>A custom multilayer perceptron defined in <code>helpers/models.py</code>, trained with its own loop in <code>helpers/mlp_train.py</code>.</p></div>
+<div class="cell"><div class="cell-tag">selection metric</div><h4>F1 first</h4><p>Models are ranked on validation F1, with AUC-ROC, AUC-PR, precision, and recall logged alongside. An overfit gap test flags any model whose train-to-validation drop exceeds the threshold.</p></div>
+</div>
+<div class="callout">
+<p><b>Leakage is guarded structurally.</b> Cross-validation uses a stratified <code>GroupKFold</code> grouped by <code>patient_nbr</code>, so every encounter for one patient lands in a single fold. A patient seen in training can never leak into validation.</p>
+</div>
+</section>
+<!-- ============ SECTION 04 - HYPERPARAMETER SEARCH ============ -->
+<section class="section" id="s4">
+<div class="opener">
+<div class="num">Section 04</div>
+<h2><span class="light">Distributed Search with</span> <span class="accent">Ray Tune</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  Notebook 06 hands the search to a Ray cluster. Each of the five families gets fifty trials under an ASHA scheduler that prunes weak configurations early.
+</p>
+<p>The orchestration lives in <code>helpers/hpo_pipeline.py</code> behind a single entry point, <code>run_hpo</code>, with the shared trial machinery in <code>helpers/hpo.py</code>. Search runs across one Ray head and two workers, each holding twenty gigabytes of memory and a four-gigabyte object store. The function detects an available GPU and routes XGBoost and CatBoost onto it, and it carries two fallbacks so the search degrades gracefully: a sequential cross-validation path when Ray is unavailable, and a deterministic grid when even that is not viable. Every knob, the trial count, the fold count, and the ASHA bracket parameters, is centralised in <code>helpers/constants.py</code>.</p>
+</div>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>search</b> helpers/constants.py</caption>
+<thead><tr><th>Setting</th><th>Value</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>NUM_SAMPLES</td><td>50</td><td>Trials per model family</td></tr>
+<tr><td>N_SPLITS_HPO</td><td>3</td><td>Cross-validation folds per trial</td></tr>
+<tr><td>scheduler</td><td>ASHA</td><td>Async successive halving, prunes underperformers early</td></tr>
+<tr><td>SEED</td><td>42</td><td>One seed threaded through every random source</td></tr>
+<tr><td>OVERFIT_THRESHOLD</td><td>0.15</td><td>Train-to-validation F1 gap that flags a model</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- ============ SECTION 05 - CHAMPION SELECTION ============ -->
+<section class="section" id="s5">
+<div class="opener">
+<div class="num">Section 05</div>
+<h2><span class="light">Promotion Through</span> <span class="accent">Three Gates</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  A new model does not become the champion because its F1 is higher. It becomes the champion only after clearing three independent gates, all of which must pass.
+</p>
+<p>Notebook 08 and <code>helpers/conclusion_pipeline.py</code> assemble the leaderboard, pick the leading candidate by F1, evaluate it on the genuinely held-out test set, and register it to MLflow as <code>medi-watch-readmission</code>. The <code>@champion</code> alias is what the serving layer resolves at request time, so promotion is the act of moving that alias. The gates below stand between a strong candidate and that alias.</p>
+</div>
+<ol class="numbered">
+<li><b>Bootstrap lift.</b> Test F1 is resampled one thousand times with replacement. The lower bound of the ninety-five percent confidence interval on the candidate-minus-incumbent difference must exceed 0.005.</li>
+<li><b>Cool-down.</b> No swap may occur within seven days of the previous promotion. This prevents the champion from thrashing between near-equal models.</li>
+<li><b>Equity parity.</b> Per-subgroup recall is compared against the incumbent. If any subgroup's recall would drop by more than 0.05, the promotion is refused.</li>
+</ol>
+<div class="callout">
+<p>Only when all three gates pass does Airflow move the <code>@champion</code> alias and trigger a redeploy. The gate helpers, <code>bootstrap_lift_ci</code> and <code>per_subgroup_recall</code>, live in <code>helpers/evaluation.py</code> and are unit tested against hand-computed expectations.</p>
+</div>
+</section>
+<!-- ============ SECTION 06 - INFRASTRUCTURE ============ -->
+<section class="section" id="s6">
+<div class="opener">
+<div class="num">Section 06</div>
+<h2><span class="light">Fourteen Services on</span> <span class="accent">One Compose Network</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+<code>medi-watch init</code> stands up the entire platform as a single Docker Compose project on a shared bridge network, <code>mlops-net</code>.
+</p>
+<p>One Postgres instance backs both the Airflow metadata database and the MLflow tracking store. A GPU overlay, <code>docker-compose.gpu.yml</code>, is merged automatically on NVIDIA hosts to reserve devices for the Ray nodes, and a <code>docker-compose.minikube.yml</code> overlay pins static addresses so the Airflow services do not collide with a minikube node. All configuration flows from <code>infra/.env</code>, which <code>doctor</code> validates before anything starts.</p>
+</div>
+<figure class="arch">
+<svg viewBox="0 0 1040 320" role="img" aria-label="End-to-end system architecture. The Diabetes-130 CSV is cleaned and feature-engineered in notebooks 01 to 05, searched with Ray Tune across five model families, tracked and registered in MLflow, promoted through three gates to the champion alias, and served by a FastAPI service on Kubernetes. Prometheus and Grafana observe the running service, and a scheduled Airflow drift check feeds a retrain back into Ray Tune whenever it raises an ALERT.">
+<defs>
+<marker id="ahMeta" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L6,3 L0,6 Z" fill="var(--svg-meta)"/></marker>
+<marker id="ahAcc" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L6,3 L0,6 Z" fill="var(--svg-accent)"/></marker>
+</defs>
+<style>
+.nbox{fill:var(--svg-card);stroke:var(--svg-rule);stroke-width:1}
+.nacc{fill:var(--svg-card-ac)}.nvio{fill:var(--svg-card-vl)}.ngrn{fill:var(--svg-card-gr)}
+.nlab{font-family:var(--display);font-size:13px;font-weight:600;fill:var(--svg-text)}
+.nsub{font-family:var(--mono);font-size:10px;fill:var(--svg-meta)}
+.flow{stroke:var(--svg-meta);stroke-width:1.5;fill:none}
+.floop{stroke:var(--svg-accent);stroke-width:1.5;fill:none;stroke-dasharray:5 4}
+.lane{font-family:var(--mono);font-size:9px;letter-spacing:.14em;fill:var(--svg-muted)}
+.lloop{font-family:var(--mono);font-size:10px;font-weight:500;fill:var(--svg-accent)}
+</style>
+<text class="lane" x="20" y="34">TRAIN &amp; REGISTER</text>
+<text class="lane" x="20" y="200">SERVE &amp; MONITOR</text>
+<!-- row 1: train & register -->
+<g><rect class="ngrn" x="20" y="44" width="152" height="58" rx="8"/><text class="nlab" x="96" y="69" text-anchor="middle">Diabetes 130</text><text class="nsub" x="96" y="86" text-anchor="middle">CSV &#183; 101k rows</text></g>
+<g><rect class="nbox" x="188" y="44" width="152" height="58" rx="8"/><text class="nlab" x="264" y="69" text-anchor="middle">Clean &amp; Features</text><text class="nsub" x="264" y="86" text-anchor="middle">NB 01&#8211;05</text></g>
+<g><rect class="nacc" stroke="var(--svg-accent)" x="356" y="44" width="152" height="58" rx="8"/><text class="nlab" x="432" y="69" text-anchor="middle">Ray Tune HPO</text><text class="nsub" x="432" y="86" text-anchor="middle">5 models &#183; ASHA</text></g>
+<g><rect class="nvio" x="524" y="44" width="152" height="58" rx="8"/><text class="nlab" x="600" y="69" text-anchor="middle">MLflow</text><text class="nsub" x="600" y="86" text-anchor="middle">track + registry</text></g>
+<g><rect class="nacc" stroke="var(--svg-accent)" x="692" y="44" width="152" height="58" rx="8"/><text class="nlab" x="768" y="69" text-anchor="middle">Three Gates</text><text class="nsub" x="768" y="86" text-anchor="middle">&#8594; @champion</text></g>
+<g><rect class="nbox" x="860" y="44" width="152" height="58" rx="8"/><text class="nlab" x="936" y="69" text-anchor="middle">FastAPI &#183; K8s</text><text class="nsub" x="936" y="86" text-anchor="middle">/invocations</text></g>
+<!-- row 2: serve & monitor -->
+<g><rect class="nbox" x="524" y="212" width="152" height="58" rx="8"/><text class="nlab" x="600" y="237" text-anchor="middle">Airflow drift</text><text class="nsub" x="600" y="254" text-anchor="middle">PSI &#183; KS &#183; Evidently</text></g>
+<g><rect class="nbox" x="860" y="212" width="152" height="58" rx="8"/><text class="nlab" x="936" y="237" text-anchor="middle">Prometheus</text><text class="nsub" x="936" y="254" text-anchor="middle">+ Grafana</text></g>
+<!-- flows -->
+<line class="flow" x1="172" y1="73" x2="186" y2="73" marker-end="url(#ahMeta)"/>
+<line class="flow" x1="340" y1="73" x2="354" y2="73" marker-end="url(#ahMeta)"/>
+<line class="flow" x1="508" y1="73" x2="522" y2="73" marker-end="url(#ahMeta)"/>
+<line class="flow" x1="676" y1="73" x2="690" y2="73" marker-end="url(#ahMeta)"/>
+<line class="flow" x1="844" y1="73" x2="858" y2="73" marker-end="url(#ahMeta)"/>
+<line class="flow" x1="936" y1="102" x2="936" y2="210" marker-end="url(#ahMeta)"/>
+<line class="flow" x1="860" y1="241" x2="678" y2="241" marker-end="url(#ahMeta)"/>
+<path class="floop" d="M600,212 C 560,168 512,148 434,108" marker-end="url(#ahAcc)"/>
+<text class="lloop" x="424" y="188" text-anchor="middle">drift ALERT &#8594; retrain</text>
+</svg>
+<figcaption class="figcap"><b>architecture</b> &#183; raw CSV &#8594; distributed search &#8594; registry &#8594; three-gate promotion &#8594; champion served on Kubernetes &#8594; observed by Prometheus/Grafana &#8594; drift-triggered retrain</figcaption>
+</figure>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>services</b> infra/docker-compose.yml</caption>
+<thead><tr><th>Service</th><th>Port</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td>postgres</td><td>5432</td><td>Shared store: Airflow metadata and the MLflow backend</td></tr>
+<tr><td>airflow (api · scheduler · dag-processor · triggerer)</td><td>8080</td><td>Orchestration of training and drift DAGs</td></tr>
+<tr><td>mlflow</td><td>5000</td><td>Experiment tracking, model registry, artifact store</td></tr>
+<tr><td>ray-head</td><td>8265 · 10001</td><td>Dashboard and client endpoint for distributed search</td></tr>
+<tr><td>ray-worker (×2)</td><td>internal</td><td>Trial execution, twenty gigabytes of memory each</td></tr>
+<tr><td>prometheus</td><td>9090</td><td>Scrapes Ray and inference metrics every fifteen seconds</td></tr>
+<tr><td>grafana</td><td>3003</td><td>Dashboard UI with server-side PNG rendering</td></tr>
+<tr><td>inference-api</td><td>8002</td><td>FastAPI scoring service resolving <code>@champion</code></td></tr>
+<tr><td>driftly-api</td><td>8003</td><td>On-demand drift metrics (Wasserstein, PSI, KL)</td></tr>
+<tr><td>driftly-web</td><td>3004</td><td>React drift-explorer single-page app</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- ============ SECTION 07 - ORCHESTRATION ============ -->
+<section class="section" id="s7">
+<div class="opener">
+<div class="num">Section 07</div>
+<h2><span class="light">Retraining That</span> <span class="accent">Runs Itself</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  Airflow turns the manual pipeline into a self-healing loop. A scheduled drift check watches production, and an ALERT verdict triggers a full retrain without a human in the path.
+</p>
+<p>Four drift and retrain DAGs cooperate. The retraining DAG runs the search, training, registration, and three-gate swap, then hands off to deployment. The scheduled check compares the champion's training reference against an incoming batch, computes PSI and KS verdicts, and fires the retrain on ALERT. An Evidently DAG produces the rich drift report, and a demo DAG fans all of this out across the five simulated scenarios. Airflow runs on a LocalExecutor against the shared Postgres, with a Fernet key encrypting stored connections.</p>
+</div>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>dags</b> infra/airflow/dags</caption>
+<thead><tr><th>DAG</th><th>Trigger</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td>retrain_on_drift</td><td>Manual or drift ALERT</td><td>Search, train, register, run the three gates, swap the champion, redeploy</td></tr>
+<tr><td>scheduled_drift_check</td><td>Manual or timed</td><td>PSI and KS on an incoming batch, with an automatic retrain on ALERT</td></tr>
+<tr><td>evidently_drift</td><td>Manual or per scenario</td><td>Generate the Evidently DataDrift and DataSummary report, log to MLflow</td></tr>
+<tr><td>drift_scenarios_demo</td><td>Manual</td><td>Fan out both drift DAGs across all five scenarios</td></tr>
+</tbody>
+</table>
+</div>
+<div class="callout">
+<p><b>Two deployment paths.</b> When <code>CICD_PROVIDER</code> is set, the retrain DAG fires a remote build through Jenkins, Azure Pipelines, or Google Cloud Build via <code>helpers/cicd_trigger.py</code>. Otherwise it falls back to a direct <code>kubectl rollout restart</code> against EKS or minikube. Either way the new pods re-resolve <code>@champion</code> on startup.</p>
+</div>
+<figure class="figure">
+<img class="shot" loading="lazy" src="docs/screenshots/airflow-retrain-on-drift.png" alt="The retrain_on_drift DAG in the Airflow grid, auto-triggered by a drift ALERT, showing the task chain from hyperparameter tuning through conclusion, the three gates, and deployment, with zero failed tasks." />
+<figcaption class="figcap"><b>recorded run</b> &#183; <code>retrain_on_drift</code>, fired by the <code>mixed_severe</code> drift ALERT on 2026-06-17. The grid records the chain <code>run_06_hyperparameter_tuning</code> &#8594; <code>run_07_model_training</code> &#8594; <code>run_08_conclusion</code> &#8594; <code>gate_champion</code> &#8594; <code>trigger_remote_deploy</code>, with no failed tasks. The drift check raised the alert, and Airflow opened this run without a human in the path.</figcaption>
+</figure>
+</section>
+<!-- ============ SECTION 08 - SERVING ============ -->
+<section class="section" id="s8">
+<div class="opener">
+<div class="num">Section 08</div>
+<h2><span class="light">A Champion</span> <span class="accent">Served Behind FastAPI</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  The inference API loads <code>medi-watch-readmission@champion</code> from the MLflow registry and serves it on port 8002 with an MLflow-compatible request shape.
+</p>
+<p>The full preprocessing pipeline, the one-hot encoder, the scaler, and the feature selector, travels with the model inside <code>full_inference_pipeline.joblib</code>, so the service applies exactly the transformations training applied. Identifier columns such as <code>patient_nbr</code> and <code>encounter_id</code> are stripped before scoring, request bodies are never logged, and an optional bearer token guards the endpoint. When the token is unset the service runs in trusted-network mode with audit logging of unauthenticated calls.</p>
+</div>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>endpoints</b> infra/inference-api</caption>
+<thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td>/invocations</td><td>POST</td><td>Batch predict, returning class predictions and probabilities</td></tr>
+<tr><td>/reload</td><td>POST</td><td>Flush the cached model so the next call re-resolves <code>@champion</code></td></tr>
+<tr><td>/healthz</td><td>GET</td><td>Liveness, with the loaded model's version and run id</td></tr>
+<tr><td>/version</td><td>GET</td><td>Full model metadata and input schema</td></tr>
+<tr><td>/metrics</td><td>GET</td><td>Prometheus counters, latency histogram, and score distribution</td></tr>
+<tr><td>/docs · /redoc</td><td>GET</td><td>Auto-generated Swagger and ReDoc interfaces</td></tr>
+</tbody>
+</table>
+</div>
+<figure class="figure">
+<img class="shot" loading="lazy" src="docs/screenshots/mlflow-champion-registry.png" alt="The MLflow model registry page for medi-watch-readmission, showing version 5 carrying the champion alias, with earlier candidates rejected by the promotion gate." />
+<figcaption class="figcap"><b>registry</b> &#183; <code>medi-watch-readmission</code> version 5 carries the <code>@champion</code> alias, with versions 2 through 4 rejected by the lift gate. The inference service resolves <code>models:/medi-watch-readmission@champion</code>, so a promotion changes the served model without a redeploy of the code. <code>GET /healthz</code> reports the resolved name, alias, and version.</figcaption>
+</figure>
+</section>
+<!-- ============ SECTION 09 - DRIFT DETECTION ============ -->
+<section class="section" id="s9">
+<div class="opener">
+<div class="num">Section 09</div>
+<h2><span class="light">Three Lenses on</span> <span class="accent">Data Drift</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  Drift is watched from three angles: a scheduled statistical check inside Airflow, rich Evidently reports, and Driftly, an interactive dashboard for ad-hoc investigation.
+</p>
+<p>The scheduled check computes the population stability index on categorical columns and the Kolmogorov-Smirnov statistic on numeric ones, with warn and alert thresholds drawn from <code>helpers/constants.py</code>. Evidently produces a full DataDrift and DataSummary report per scenario. Driftly, a React and FastAPI application on ports 8003 and 3004, computes Wasserstein distance, PSI, and KL divergence on demand against the champion's training cohort of 99,340 rows, storing each run in the shared Postgres <code>mediwatch</code> database so trends can be charted. Its thresholds are overridable through environment variables such as <code>DRIFTLY_WASSERSTEIN_ALERT</code>.</p>
+</div>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>scenarios</b> notebook 09 · measured on held-out labels</caption>
+<thead><tr><th>Scenario</th><th>Perturbation</th><th>Champion F1 impact</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>none</td><td>Unperturbed batch</td><td>−0.0007</td><td>OK</td></tr>
+<tr><td>coding_shift</td><td>Diagnosis codes vary</td><td>+0.0009</td><td>ALERT</td></tr>
+<tr><td>formulary_shift</td><td>Medication list changes</td><td>−0.0036</td><td>ALERT</td></tr>
+<tr><td>casemix_shift</td><td>Age and comorbidity mix</td><td>−0.0065</td><td>ALERT</td></tr>
+<tr><td>los_utilization_shift</td><td>Length-of-stay features</td><td>−0.0163</td><td>ALERT</td></tr>
+<tr><td>mixed_severe</td><td>Combined perturbations</td><td>−0.0191</td><td>ALERT</td></tr>
+</tbody>
+</table>
+</div>
+<div class="callout">
+<p>The verdicts trip on distribution change, not on harm. The champion proved robust to every perturbation, with the largest measured F1 drop near 0.019. Drift detection and model failure are distinct signals, and the platform reports them separately.</p>
+</div>
+<figure class="figure">
+<img class="shot" loading="lazy" src="docs/screenshots/evidently-mixed_severe-drift.png" alt="Evidently data-drift report for the mixed_severe scenario: dataset drift detected across 13 of 78 columns, with per-column reference and current distributions and PSI or KS statistics." />
+<figcaption class="figcap"><b>data drift</b> &#183; Evidently report for <code>mixed_severe</code>, 13 of 78 columns drifted. Population stability flags <code>age_mid</code> at 14.7, <code>n_med_changes</code> at 6.8, and the three diagnosis-category columns above 2.5, while the Kolmogorov-Smirnov test flags the continuous columns. The scheduled check returns <code>ALERT</code> on the same batch.</figcaption>
+</figure>
+<div class="tbl-wrap">
+<table class="tbl">
+<caption><b>verdict</b> scheduled_drift_check · mixed_severe · 2026-06-17</caption>
+<thead><tr><th>Column</th><th>Method</th><th>Statistic</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>diag_1_cat / diag_2_cat / diag_3_cat</td><td>PSI</td><td>3.89</td><td>ALERT</td></tr>
+<tr><td>time_in_hospital</td><td>PSI</td><td>3.54</td><td>ALERT</td></tr>
+<tr><td>number_inpatient</td><td>KS</td><td>0.67</td><td>ALERT</td></tr>
+<tr><td>num_lab_procedures</td><td>KS</td><td>0.34</td><td>ALERT</td></tr>
+<tr><td>num_medications</td><td>KS</td><td>0.30</td><td>ALERT</td></tr>
+<tr><td>number_emergency · number_diagnoses · num_procedures</td><td>KS / PSI</td><td>≈0.00</td><td>OK</td></tr>
+</tbody>
+</table>
+</div>
+<div class="callout">
+<p><b>Verdict: ALERT.</b> Population stability index and the Kolmogorov-Smirnov statistic run against a hard-coded set of columns, with warn and alert bands from <code>helpers/constants.py</code>. The reference is the champion training cohort of 99,340 rows. This verdict opened the <code>retrain_on_drift</code> run shown in the orchestration section.</p>
+</div>
+</section>
+<!-- ============ SECTION 10 - OBSERVABILITY ============ -->
+<section class="section" id="s10">
+<div class="opener">
+<div class="num">Section 10</div>
+<h2><span class="light">Metrics from</span> <span class="accent">Search to Serving</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  Prometheus scrapes both the Ray cluster and the inference API. Grafana renders the result as an eight-panel model-KPI dashboard, with a second datasource reading MLflow directly.
+</p>
+<p>The inference service exports a small, purposeful set of series: a request counter, a latency histogram exposing p50, p95, and p99, a histogram of predicted probabilities, a twenty-four-hour rows-scored gauge, and a counter of champion reloads. Grafana joins these against MLflow to chart the champion's age in days, the registered-version timeline, and validation F1 across every training run. The dashboard JSON ships in the repository and renders server-side to PNG through the image-renderer service, so the monitoring evidence under <code>infra/monitoring/grafana/</code> is reproducible.</p>
+</div>
+<div class="grid-3">
+<div class="cell"><div class="cell-tag">prometheus</div><h4>Latency</h4><p><code>inference_latency_seconds</code> as a histogram. Observed near 20ms at p50 and 49ms at p99.</p></div>
+<div class="cell"><div class="cell-tag">prometheus</div><h4>Throughput</h4><p><code>inference_requests_total</code> and a 24h rows-scored gauge for volume and SLA tracking.</p></div>
+<div class="cell"><div class="cell-tag">prometheus</div><h4>Score distribution</h4><p>A histogram of predicted readmission probability, surfacing output drift at a glance.</p></div>
+<div class="cell"><div class="cell-tag">mlflow</div><h4>Champion age</h4><p>Days since the current <code>@champion</code> was promoted, read straight from the registry.</p></div>
+<div class="cell"><div class="cell-tag">mlflow</div><h4>Version timeline</h4><p>Every registered version with its promotion timestamp.</p></div>
+<div class="cell"><div class="cell-tag">mlflow</div><h4>Validation F1</h4><p>F1 for every training run, the long view of whether the model is improving.</p></div>
+</div>
+<figure class="figure">
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/dashboard-full.png" alt="The full medi-watch model-KPI Grafana dashboard with all panels: champion age, registered versions, request throughput, latency, predicted-score distribution, rows scored, and champion reloads." />
+<figcaption class="figcap"><b>grafana</b> &#183; the medi-watch model-KPI dashboard, rendered server-side to PNG and committed under <code>infra/monitoring/grafana/</code></figcaption>
+</figure>
+<div class="figrid">
+<figure>
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/panel-09-latency.png" alt="Grafana latency panel: p50 near 20ms, p99 near 49ms." />
+<figcaption class="figcap"><b>prometheus</b> &#183; scoring latency, p50 / p95 / p99</figcaption>
+</figure>
+<figure>
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/panel-08-requests.png" alt="Grafana panel: inference request throughput over time." />
+<figcaption class="figcap"><b>prometheus</b> &#183; inference request throughput</figcaption>
+</figure>
+<figure>
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/panel-10-score.png" alt="Grafana panel: histogram of predicted readmission probability." />
+<figcaption class="figcap"><b>prometheus</b> &#183; predicted-probability distribution</figcaption>
+</figure>
+<figure>
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/panel-11-rows24h.png" alt="Grafana panel: rows scored in the last twenty-four hours." />
+<figcaption class="figcap"><b>prometheus</b> &#183; rows scored, last 24h</figcaption>
+</figure>
+<figure>
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/panel-12-reloads24h.png" alt="Grafana panel: champion reloads in the last twenty-four hours." />
+<figcaption class="figcap"><b>prometheus</b> &#183; champion reloads, last 24h</figcaption>
+</figure>
+<figure>
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/panel-05-champion-age.png" alt="Grafana panel: days since the current champion was promoted." />
+<figcaption class="figcap"><b>mlflow</b> &#183; champion age since promotion</figcaption>
+</figure>
+<figure>
+<img class="shot" loading="lazy" src="infra/monitoring/grafana/panel-06-registered-versions.png" alt="Grafana panel: timeline of every registered model version." />
+<figcaption class="figcap"><b>mlflow</b> &#183; registered version timeline</figcaption>
+</figure>
+</div>
+</section>
+<!-- ============ SECTION 11 - QUALITY & TESTING ============ -->
+<section class="section" id="s11">
+<div class="opener">
+<div class="num">Section 11</div>
+<h2><span class="light">Tested at Every</span> <span class="accent">Boundary</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  Twenty-two test modules cover the helpers library, the pipeline stages, the promotion gates, and even the syntactic validity of the Airflow DAGs.
+</p>
+<p>The suite is organised in tiers. Pure tests run on in-memory fixtures against hand-computed expectations. Pure-ish tests run real sklearn and PyTorch on a miniature cohort, CPU-only. Impure tests mock the external boundaries, MLflow, Ray, Postgres, and <code>nvidia-smi</code>, while still exercising the deterministic fallbacks for real. A shared <code>conftest.py</code> seeds every random source and synthesises a small Diabetes-130 cohort, so the whole suite is deterministic. One module, <code>test_check_requirements_pins.py</code>, even guards the dependency pins across the sites that must stay in lockstep, and another, <code>test_pipeline_parity.py</code>, asserts that the training and inference pipelines produce identical output.</p>
+</div>
+</section>
+<!-- ============ SECTION 12 - DEPLOYMENT & CI/CD ============ -->
+<section class="section" id="s12">
+<div class="opener">
+<div class="num">Section 12</div>
+<h2><span class="light">From Compose to</span> <span class="accent">Kubernetes</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  Only the inference API is promoted to Kubernetes. Airflow, Ray, and MLflow remain in Compose, because the scoring service is the only component that must scale with production traffic.
+</p>
+<p>The manifests in <code>infra/k8s/</code> declare a two-replica deployment behind a service, with a horizontal autoscaler that ranges from two to six pods and a rolling-update strategy that holds availability at full during a swap. Three first-class CI pipelines ship in <code>infra/ci-cd/</code>, one each for Jenkins, Azure Pipelines, and Google Cloud Build, every one of them building the image, pushing to its registry, and applying the manifests to its cluster. The AWS path adds an ECR push and an EKS rollout through <code>infra/aws/deploy.sh</code>, while <code>deploy-local.sh</code> covers the minikube case.</p>
+</div>
+<div class="grid-3">
+<div class="cell"><div class="cell-tag">jenkins</div><h4>Jenkinsfile</h4><p>Build, test, push to ECR, and apply to EKS.</p></div>
+<div class="cell"><div class="cell-tag">azure</div><h4>azure-pipelines.yml</h4><p>Smoke test, build, push to ACR, deploy to AKS.</p></div>
+<div class="cell"><div class="cell-tag">gcp</div><h4>cloudbuild.yaml</h4><p>Build, push to Artifact Registry, deploy to GKE.</p></div>
+</div>
+</section>
+<!-- ============ SECTION 13 - THE DATA ============ -->
+<section class="section" id="s13">
+<div class="opener">
+<div class="num">Section 13</div>
+<h2><span class="light">The Problem Beneath</span> <span class="accent">the Platform</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  The model predicts whether a diabetic patient will be readmitted within thirty days, trained on the UCI Diabetes 130-US Hospitals dataset spanning 1999 to 2008.
+</p>
+<p>The raw data holds 101,766 encounters, reduced to a training cohort of 99,340 after cleaning. The target is binary and imbalanced, with roughly eleven percent of encounters being a readmission within thirty days, which is why every model carries a class-weight treatment and why F1 rather than accuracy is the selection metric. Feature engineering yields a matrix of demographics, diagnoses, medications, lab values, admission and discharge detail, and a per-patient history of prior encounters. That engineered matrix doubles as the reference distribution against which all drift is measured.</p>
+</div>
+<div class="hero-facts" style="margin-top: 8px;">
+<div class="hero-fact"><span class="k">Source</span><span class="v">UCI Diabetes 130-US</span></div>
+<div class="hero-fact"><span class="k">Cohort</span><span class="v">99,340 encounters</span></div>
+<div class="hero-fact"><span class="k">Target</span><span class="v">30-day readmission · ~11% positive</span></div>
+</div>
+</section>
+<!-- ============ SECTION 14 - THE HELPERS LIBRARY ============ -->
+<section class="section" id="s14">
+<div class="opener">
+<div class="num">Section 14</div>
+<h2><span class="light">The Library</span> <span class="accent">Underneath It All</span></h2>
+</div>
+<div class="prose">
+<p class="lead">
+  The notebooks are thin. The substance lives in <code>helpers/</code>, a tested Python library that the notebooks, the Airflow DAGs, and the inference API all import in common.
+</p>
+<p>This is what lets notebooks 06 through 08 run as fast library calls and lets a DAG run the same training unattended. The same <code>model_loading</code> module that the notebooks use to inspect a model is the one the inference API uses to serve it, so there is a single source of truth for how a model is reconstituted. The modules below are the load-bearing ones.</p>
+</div>
+<div class="grid-3">
+<div class="cell"><div class="cell-tag">config</div><h4>constants.py</h4><p>Every tunable knob in one place: the seed, the gate thresholds, the search parameters, and the drift cut-offs.</p></div>
+<div class="cell"><div class="cell-tag">modeling</div><h4>models.py</h4><p>Builds any of the five estimator families and computes the shared metric set.</p></div>
+<div class="cell"><div class="cell-tag">search</div><h4>hpo_pipeline.py</h4><p>Orchestrates the Ray Tune search with GPU detection and graceful fallbacks.</p></div>
+<div class="cell"><div class="cell-tag">selection</div><h4>conclusion_pipeline.py</h4><p>Assembles the leaderboard, picks the champion, and registers it with the <code>@champion</code> alias.</p></div>
+<div class="cell"><div class="cell-tag">gates</div><h4>evaluation.py</h4><p>The bootstrap-lift and subgroup-recall checks that guard every promotion.</p></div>
+<div class="cell"><div class="cell-tag">drift</div><h4>drift_sim.py</h4><p>Wasserstein, KL, and PSI, shared by the scheduled check and the Driftly dashboard.</p></div>
+<div class="cell"><div class="cell-tag">serving</div><h4>model_loading.py</h4><p>Reconstitutes a model from joblib or the registry. Shared by notebooks and the API.</p></div>
+<div class="cell"><div class="cell-tag">tracking</div><h4>mlops_helpers.py</h4><p>Thin MLflow wrappers for logging estimators, datasets, and run metadata.</p></div>
+<div class="cell"><div class="cell-tag">guardrail</div><h4>check_requirements_pins.py</h4><p>Verifies the dependency pins agree across every site that declares them.</p></div>
+</div>
+<div class="callout">
+<p>Each module has a matching <code>test_*.py</code> beside it under <code>test/</code>.</p>
+</div>
+</section>
+<!-- ============ SECTION 15 - FUTURE ENHANCEMENTS ============ -->
+<section class="section" id="s15">
+<div class="opener">
+<div class="num">Section 15</div>
+<h2><span class="light">Where medi-watch</span> <span class="accent">Goes Next</span></h2>
+</div>
+<div class="prose">
+<h3>Roadmap</h3>
+</div>
+<ol class="numbered">
+<li><b>Richer feature store with patient-history online features.</b> Today a prediction is computed from a single encounter row. The next version introduces a feature store (Feast or an equivalent) so that derived, time-windowed features (prior admissions in the last ninety days, rolling medication counts, trend of A1C across visits) are materialized offline for training and served online at low latency for inference. This closes the train/serve skew gap, because the same feature definitions feed <code>helpers/models.py</code> at fit time and the inference API at request time, and it gives the model the longitudinal signal that a single-row snapshot cannot carry.</li>
+<li><b>Fairness-aware thresholding.</b> The equity gate in <code>helpers/evaluation.py</code> is currently a guardrail: it can <em>refuse</em> a promotion that would harm a subgroup, but it does not <em>repair</em> disparity. The enhancement is to move from a single global decision threshold to subgroup-calibrated thresholds (or a constrained-optimization post-processing step such as equalized-odds adjustment), selected on validation data and re-validated by the existing <code>per_subgroup_recall</code> check. This moves the equity gate from refusing harm to actively reducing disparity, with that check confirming the change worked.</li>
+<li><b>True streaming inference.</b> The serving path is request/response over HTTP. For settings where encounters arrive as events, the next version adds a streaming consumer (Kafka or Kinesis) that scores records as they land, writes predictions to a results topic, and emits the same Prometheus metrics the API already exposes. The model-reconstitution logic in <code>helpers/model_loading.py</code> is already the single source of truth for loading a champion, so the streaming worker reuses it unchanged. Only the transport in front of it is new.</li>
+<li><b>Automated champion–challenger A/B in production.</b> Promotion is currently an offline, gate-based alias move. The next step is to shadow or canary a challenger against live traffic: route a small slice of requests to the challenger, log both predictions, and compare realized outcomes once labels arrive. The bootstrap-lift machinery already written for offline promotion (<code>bootstrap_lift_ci</code>) is reused to decide the online winner, so the <code>@champion</code> alias only moves once the online evidence clears the same statistical bar as an offline swap.</li>
+<li><b>Tighter cloud-native (non-Compose) orchestration.</b> The fourteen-service <code>docker compose</code> stack and the self-managed <code>Airflow</code> are ideal for a reproducible local capstone, but production wants managed primitives. The roadmap migrates the DAGs to a managed scheduler (Cloud Composer, MWAA, or Astronomer) and the services to the Kubernetes manifests already sketched in Section 12, turning the Compose network into Deployments, Services, and CronJobs, with secrets and autoscaling handled by the platform instead of by hand.</li>
+</ol>
+<div class="grid-2">
+<div class="cell"><div class="cell-tag">near-term</div><h4>Lowest lift, highest signal</h4><p>Fairness-aware thresholding and the feature store reuse modules that already exist (<code>evaluation.py</code>, <code>models.py</code>) and need no new infrastructure, so they ship first and de-risk the rest.</p></div>
+<div class="cell"><div class="cell-tag">long-term</div><h4>Platform-level investments</h4><p>Streaming inference, live A/B promotion, and managed orchestration each introduce a new runtime dependency, so they follow once the data and fairness layers are settled.</p></div>
+</div>
+<div class="callout">
+<p>None of these require rewriting the core. Each reuses the existing <code>helpers/</code> modules and extends the system in place.</p>
+</div>
+</section>
+<footer class="footer">
+<div class="left">
+<span class="dot"></span>
+<span class="lines">
+<b>medi-watch</b>
+<span>IKS capstone</span>
+<span>May 2026</span>
+</span>
+</div>
+<div class="right">
+<div>© <span class="name">Marc D Sooter</span></div>
+<div><a href="mailto:marc.sooter@augme.ai">marc.sooter@augme.ai</a></div>
+<div class="rights">All Rights Reserved</div>
+</div>
+</footer>
+</main>
+<!-- ============ RIGHT-SIDE NAVIGATION ============ -->
+<button class="mobile-toggle" aria-label="Toggle index">
+<svg width="18" height="18" viewbox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<line x1="3" y1="6" x2="21" y2="6"></line>
+<line x1="3" y1="12" x2="21" y2="12"></line>
+<line x1="3" y1="18" x2="15" y2="18"></line>
+</svg>
+</button>
+<aside class="nav" id="nav">
+<div class="nav-head">
+<div class="brand">
+<div class="brand-glyph">m</div>
+<div class="brand-name">medi-watch<span>capstone · readme</span></div>
+</div>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+<svg class="theme-icon" viewbox="0 0 24 24" aria-hidden="true">
+<!-- mask id MUST be unique per document: SVG mask references are resolved by
+     document-wide ID, so a second copy of this icon would reuse the first mask
+     and render broken. The init script below rewrites this id (and the matching
+     mask="url(#...)" reference) to a per-instance value, so the icon is safe to
+     reuse as-is. If you hand-duplicate this SVG without that script, give each
+     copy a distinct id manually. -->
+<mask id="moon-mask">
+<rect x="0" y="0" width="24" height="24" fill="white"></rect>
+<!-- The cutter is ALWAYS fill="black" regardless of theme: black = "hide" inside
+     a luminance mask, which is what carves the crescent. It is a mask channel,
+     not a visible colour, so it correctly does the same job in dark and light. -->
+<circle class="moon-cut" cx="17" cy="7" r="6" fill="black"></circle>
+</mask>
+<!-- fill="currentColor" tracks --ink-2 / accent across themes; the mask only
+     subtracts a crescent and never overrides that colour, so this disc stays
+     theme-correct in both modes (the cutter above explains why the mask itself
+     is theme-agnostic). -->
+<circle class="sun-core" cx="12" cy="12" r="6" fill="currentColor" mask="url(#moon-mask)"></circle>
+<g class="sun-rays" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+<line x1="12" y1="1" x2="12" y2="3"></line>
+<line x1="12" y1="21" x2="12" y2="23"></line>
+<line x1="3.5" y1="3.5" x2="5.2" y2="5.2"></line>
+<line x1="18.8" y1="18.8" x2="20.5" y2="20.5"></line>
+<line x1="1" y1="12" x2="3" y2="12"></line>
+<line x1="21" y1="12" x2="23" y2="12"></line>
+<line x1="3.5" y1="20.5" x2="5.2" y2="18.8"></line>
+<line x1="18.8" y1="5.2" x2="20.5" y2="3.5"></line>
+</g>
+</svg>
+</button>
+</div>
+<nav aria-label="Page sections">
+<div class="nav-eyebrow">overview</div>
+<ul class="nav-list">
+<li><a href="#hero"><span class="num">00</span><span>medi-watch</span></a></li>
+</ul>
+<div class="nav-eyebrow">the basics</div>
+<ul class="nav-list">
+<li><a href="#s1"><span class="num">01</span><span>Zero to Inference</span></a></li>
+<li><a href="#s2"><span class="num">02</span><span>The CLI</span></a></li>
+</ul>
+<div class="nav-eyebrow">the pipeline</div>
+<ul class="nav-list">
+<li><a href="#s3"><span class="num">03</span><span>Modeling Pipeline</span></a></li>
+<li><a href="#s4"><span class="num">04</span><span>Hyperparameter Search</span></a></li>
+<li><a href="#s5"><span class="num">05</span><span>Champion Selection</span></a></li>
+</ul>
+<div class="nav-eyebrow">the platform</div>
+<ul class="nav-list">
+<li><a href="#s6"><span class="num">06</span><span>Infrastructure</span></a></li>
+<li><a href="#s7"><span class="num">07</span><span>Orchestration</span></a></li>
+<li><a href="#s8"><span class="num">08</span><span>Serving</span></a></li>
+</ul>
+<div class="nav-eyebrow">reliability</div>
+<ul class="nav-list">
+<li><a href="#s9"><span class="num">09</span><span>Drift Detection</span></a></li>
+<li><a href="#s10"><span class="num">10</span><span>Observability</span></a></li>
+<li><a href="#s11"><span class="num">11</span><span>Quality & Testing</span></a></li>
+</ul>
+<div class="nav-eyebrow">shipping</div>
+<ul class="nav-list">
+<li><a href="#s12"><span class="num">12</span><span>Deployment & CI/CD</span></a></li>
+<li><a href="#s13"><span class="num">13</span><span>The Data</span></a></li>
+<li><a href="#s14"><span class="num">14</span><span>The Helpers Library</span></a></li>
+</ul>
+<div class="nav-eyebrow">what's next</div>
+<ul class="nav-list">
+<li><a href="#s15"><span class="num">15</span><span>Future Enhancements</span></a></li>
+</ul>
+</nav>
+</aside>
+</div>
+<script>
+  (function () {
+    const THEME_KEY = 'medi-watch-readme-theme';
+    const root = document.documentElement;
+    const saved = localStorage.getItem(THEME_KEY);
+    const initial = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    root.setAttribute('data-theme', initial);
+
+    // Scope every theme-icon's mask to a per-instance id so the icon is safe to
+    // reuse on a page. SVG mask refs resolve document-wide by id, so without this
+    // a second copy would point at the first mask and render broken.
+    // Date.now() is fine for uniqueness here: this page is a static document, so the
+    // icon is never server-rendered or hydrated more than once per load. There
+    // is no SSR/client id mismatch to worry about. The loop index also disambiguates
+    // multiple instances created within the same millisecond.
+    document.querySelectorAll('.theme-icon mask[id]').forEach((mask, i) => {
+      const oldId = mask.id;
+      const uid = oldId + '-' + i + '-' + (Date.now().toString(36));
+      mask.id = uid;
+      mask.closest('svg').querySelectorAll('[mask="url(#' + oldId + ')"]')
+        .forEach(el => el.setAttribute('mask', 'url(#' + uid + ')'));
+    });
+
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem(THEME_KEY, next);
+      });
+    }
+  })();
+
+  (function () {
+    const links = document.querySelectorAll('aside.nav a[href^="#"]');
+    const map = new Map();
+    links.forEach(a => {
+      const id = a.getAttribute('href').slice(1);
+      const target = document.getElementById(id);
+      if (target) map.set(target, a);
+    });
+    const io = new IntersectionObserver(
+      entries => {
+        entries.forEach(e => {
+          const a = map.get(e.target);
+          if (!a) return;
+          if (e.isIntersecting) {
+            links.forEach(x => x.classList.remove('active'));
+            a.classList.add('active');
+            // Desktop only: on mobile the nav is a drawer, and auto-scrolling it
+            // while the user scrolls the page is disorienting.
+            if (window.innerWidth > 980) {
+              try { a.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+            }
+          }
+        });
+      },
+      { rootMargin: '-25% 0px -65% 0px', threshold: 0 }
+    );
+    map.forEach((_, t) => io.observe(t));
+
+    // === Mobile nav (Index drawer) enhancements ===
+    const navEl = document.getElementById('nav');
+    const mobileBtn = document.querySelector('.mobile-toggle');
+
+    function closeMobileNav() {
+      if (navEl) navEl.classList.remove('open');
+      if (mobileBtn) mobileBtn.classList.remove('open');
+    }
+
+    if (mobileBtn && navEl) {
+      // Proper click handler (replaces inline onclick)
+      mobileBtn.addEventListener('click', (e) => {
+        e.stopImmediatePropagation();
+        const willBeOpen = !navEl.classList.contains('open');
+        navEl.classList.toggle('open', willBeOpen);
+        mobileBtn.classList.toggle('open', willBeOpen);
+
+        if (willBeOpen && window.innerWidth <= 980) {
+          // Auto-retract when mouse leaves the menu
+          const onLeave = () => {
+            closeMobileNav();
+            navEl.removeEventListener('mouseleave', onLeave);
+          };
+          navEl.addEventListener('mouseleave', onLeave, { once: true });
+        }
+      });
+    }
+
+    // Close when clicking any nav link on mobile (existing behavior)
+    document.querySelectorAll('aside.nav a').forEach(a => {
+      a.addEventListener('click', () => {
+        if (window.innerWidth <= 980) {
+          closeMobileNav();
+        }
+      });
+    });
+  })();
+
+  // === Two-tier readability hook ===
+  // Quiets the neural canvas while heavy reading regions are in view:
+  //   ultra-dense: section contains code (pre.code) OR a table (table.tbl).
+  //                The eye is working hardest here, so the canvas is calmest.
+  //   dense-prose: section is otherwise text-heavy (a lot of prose)
+  // ultra takes precedence when both kinds of section are simultaneously in view.
+  (function () {
+    const sections = Array.from(document.querySelectorAll('main.doc .section'));
+    const isUltra = s => !!s.querySelector('pre.code, table.tbl');
+    const isDense = s => !isUltra(s) &&
+      (s.textContent || '').trim().length > 600; // long-form prose section
+    const tracked = sections.filter(s => isUltra(s) || isDense(s));
+    if (!tracked.length) return;
+
+    const visUltra = new Set();
+    const visDense = new Set();
+    const io = new IntersectionObserver(
+      entries => {
+        entries.forEach(e => {
+          const set = isUltra(e.target) ? visUltra : visDense;
+          if (e.isIntersecting) set.add(e.target);
+          else set.delete(e.target);
+        });
+        const ultra = visUltra.size > 0;
+        document.body.classList.toggle('ultra-dense', ultra);
+        // dense-prose only when a text-heavy section is in view AND no ultra section is
+        document.body.classList.toggle('dense-prose', !ultra && visDense.size > 0);
+      },
+      { rootMargin: '-20% 0px -20% 0px', threshold: 0 }
+    );
+    tracked.forEach(s => io.observe(s));
+  })();
+
+  // === Copy-to-clipboard for code blocks + install command chips ===
+  // Adds a "copy" control to every <pre class="code"> (top-right, the shell
+  // label position) and every .cmd-line install chip, copying the
+  // associated <code> text. Uses the async Clipboard API in a secure context,
+  // falling back to a hidden-textarea execCommand when the page is opened
+  // straight from disk (file://), where the Clipboard API is unavailable.
+  (function () {
+    function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+      }
+      return new Promise((resolve, reject) => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+        document.body.removeChild(ta);
+        ok ? resolve() : reject(new Error('copy failed'));
+      });
+    }
+
+    function addCopyButton(host, codeEl) {
+      if (!host || !codeEl) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copy-btn';
+      btn.textContent = 'copy';
+      btn.setAttribute('aria-label', 'Copy to clipboard');
+      btn.addEventListener('click', () => {
+        copyText(codeEl.textContent.trim()).then(() => {
+          btn.textContent = 'copied';
+          btn.classList.add('copied');
+        }).catch(() => {
+          btn.textContent = 'press ⌘/ctrl+c';
+        }).finally(() => {
+          setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1600);
+        });
+      });
+      host.appendChild(btn);
+    }
+
+    document.querySelectorAll('pre.code').forEach(pre => addCopyButton(pre, pre.querySelector('code')));
+    document.querySelectorAll('.cmd-line').forEach(line => addCopyButton(line, line.querySelector('code')));
+  })();
+</script>
+<!-- Neural Mesh Background (the "talking neural net" field) -->
+<script src="assets/neural-mesh-background.js"></script>
+</body>
+</html>

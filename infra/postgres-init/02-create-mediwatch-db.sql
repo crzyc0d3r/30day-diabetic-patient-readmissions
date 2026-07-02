@@ -1,0 +1,12 @@
+-- Second-init seed: the MediWatch application data store.
+--
+-- Runs once when the Postgres container initialises an empty data volume,
+-- alongside 01-create-mlflow-db.sql. Adds a third logical DB named `mediwatch`
+-- so the application's raw/cleaned/feature tables, drift-run history, and model
+-- artifact blobs share one database, isolated from Airflow's and MLflow's
+-- metadata. Uses the same POSTGRES_USER credentials from infra/.env.
+--
+-- NOTE: init scripts only run on a FRESH volume. On an already-running
+-- container, helpers/db.ensure_database() creates this DB on demand instead, so
+-- you never have to wipe the volume just to add it.
+CREATE DATABASE mediwatch;

@@ -1,0 +1,931 @@
+  :root[data-theme="dark"] {
+    --bg:          #0a0a0d;
+    --bg-2:        #111116;
+    --bg-3:        #16161d;
+    --bg-4:        #20202a;
+    --bg-hi:       #1a1a24;
+
+    --ink:         #ededf2;
+    --ink-2:       #a8a8b4;
+    --ink-3:       #82828f; /* lifted from #6b6b78 to clear WCAG AA (≈5.2:1 on --bg) for the muted-label tier (.tok-c, .copy-btn, nav eyebrows, footer all inherit this) */
+    --muted:       #45454f;
+
+    --rule:        #20202a;
+    --rule-2:      #2c2c38;
+
+    --accent:      #5b9eff;
+    --accent-2:    #7eb6ff;
+    --accent-soft: rgba(91, 158, 255, 0.10);
+    --accent-line: rgba(91, 158, 255, 0.32);
+    --accent-glow: rgba(91, 158, 255, 0.06);
+    --select:      rgba(91, 158, 255, 0.22); /* soft selection tint — keeps text legible */
+
+    --green:       #4ade80;
+    --violet:      #a78bfa;
+    --rose:        #f472b6;
+    --amber:       #fbbf24;
+
+    --svg-card:    #14141c;
+    --svg-card-2:  #1b1b25;
+    --svg-card-ac: #131a28;
+    --svg-card-gr: #131c17;
+    --svg-card-vl: #1a1426;
+    --svg-text:    #ededf2;
+    --svg-meta:    #a8a8b4;
+    --svg-muted:   #6b6b78;
+    --svg-rule:    #2c2c38;
+    --svg-accent:  #5b9eff;
+    --svg-green:   #4ade80;
+    --svg-violet:  #a78bfa;
+
+    /* Neural-canvas cell detail (read by neural-mesh-background.js). Dark theme
+       uses screen blend, so these are LIGHT to show up as subtle highlights. */
+    --node-membrane: #e8e8f0;
+    --node-cell:     #f4f4ff;
+  }
+
+  :root[data-theme="light"] {
+    --bg:          #fbfbfc;
+    --bg-2:        #f3f3f6;
+    --bg-3:        #e9e9ee;
+    --bg-4:        #d8d8e0;
+    --bg-hi:       #eef2fa;
+
+    --ink:         #0a0a0d;
+    --ink-2:       #3a3a45;
+    --ink-3:       #5e5e6a; /* darkened from #6b6b78 to clear WCAG AA (≥4.5:1) on the light card backgrounds the muted tier sits on */
+    --muted:       #9a9aa6;
+
+    --rule:        #e0e0e7;
+    --rule-2:      #cdcdd6;
+
+    --accent:      #2563eb;
+    --accent-2:    #1d4fd1;
+    --accent-soft: rgba(37, 99, 235, 0.08);
+    --accent-line: rgba(37, 99, 235, 0.30);
+    --accent-glow: rgba(37, 99, 235, 0.05);
+    --select:      rgba(37, 99, 235, 0.14); /* soft selection tint — keeps text legible */
+
+    --green:       #16a34a;
+    --violet:      #7c3aed;
+    --rose:        #db2777;
+    --amber:       #d97706;
+
+    --svg-card:    #f3f3f6;
+    --svg-card-2:  #e9e9ee;
+    --svg-card-ac: #e0eaff;
+    --svg-card-gr: #dcf3e3;
+    --svg-card-vl: #e9e0fa;
+    --svg-text:    #0a0a0d;
+    --svg-meta:    #3a3a45;
+    --svg-muted:   #6b6b78;
+    --svg-rule:    #d0d0d8;
+    --svg-accent:  #2563eb;
+    --svg-green:   #16a34a;
+    --svg-violet:  #7c3aed;
+
+    /* Light theme uses MULTIPLY blend, so light detail colors would vanish.
+       These are DARK so membranes/granules read as subtle specks on the light
+       cytoplasm — preserving the biological texture across both themes. */
+    --node-membrane: #4a4a55;
+    --node-cell:     #5b5b66;
+  }
+
+  :root {
+    --display: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --body:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:    "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+    --nav-w:   240px; /* Deliberately narrow: this is a short two-section README with only
+                         three index links, so the sidebar is intentionally minimal chrome.
+                         A longer document would justify widening this back toward 270px. */
+
+    /* Primary spacing scale: 4 / 8 / 12 / 16 / 20 / 24 / 32 / 48 / 56 / 64 / 72 / 80 / 88 px */
+
+    /* Single source of truth for content width. Every wide block (grids, code,
+       callouts, tables) obeys --content-max so blocks share one left+right edge.
+       Prose paragraphs additionally cap at a readable measure (see .prose p).
+       --gutter is the section side padding; section outer = content + 2·gutter. */
+    --content-max: 1080px;
+    --gutter:      80px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; overflow-x: clip; } /* clip horizontal overflow at the viewport so the off-canvas (position:fixed) mobile nav drawer can't induce a sideways scroll; clip (not hidden) leaves position:sticky working */
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px; /* web body baseline (was 15px) */
+    font-weight: 400;
+    line-height: 1.7; /* slightly looser to keep the now-wider prose measure comfortable */
+    font-feature-settings: "kern", "liga";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    overflow-x: clip; /* paired with the html overflow-x:clip above; both are needed to fully contain the off-canvas fixed nav drawer's width on mobile (viewport/ICB overflow-propagation quirk). clip (not hidden) keeps position:sticky working. */
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+
+  ::selection { background: var(--select); color: var(--ink); } /* soft tint, not a full-accent flash */
+
+  .shell {
+    display: grid;
+    grid-template-columns: 1fr var(--nav-w);
+    min-height: 100vh;
+  }
+
+  aside.nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    border-left: 1px solid var(--rule);
+    padding: 20px 18px 32px; /* tightened in line with reduced nav width */
+    background: var(--bg);
+    order: 2;
+    box-shadow: -1px 0 0 var(--rule); /* subtle separation from main content */
+  }
+  aside.nav::-webkit-scrollbar { width: 6px; }
+  aside.nav::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 3px; }
+  aside.nav::-webkit-scrollbar-track { background: transparent; }
+
+  .nav-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-glyph {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    color: var(--bg);
+    border-radius: 6px;
+    display: grid; place-items: center;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+  }
+  .brand-name {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .brand-name span {
+    display: block;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-top: 4px; /* on-scale (was 3px) */
+    font-weight: 400;
+  }
+
+  .theme-toggle {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    color: var(--ink-2);
+    width: 40px; height: 40px; /* up from 34px toward the 44px touch-comfort size */
+    border-radius: 6px;
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: all 160ms ease;
+    padding: 0;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  /* Keyboard focus uses the same accent language as the rest of the UI. */
+  .theme-toggle:focus-visible,
+  .mobile-toggle:focus-visible,
+  .nav-list a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  /* Single adaptive theme icon — one SVG, driven entirely by [data-theme]
+     (no second element, no JS DOM swap), matching the token-driven canvas.
+     A mask-cutter circle carves the sun disc into a crescent for dark mode;
+     the sun rays fade out. Light mode slides the cutter off-disc and shows rays. */
+  .theme-icon { width: 16px; height: 16px; color: var(--ink-2); display: block; }
+  .theme-toggle:hover .theme-icon { color: var(--accent); }
+  .theme-icon .moon-cut {
+    transform: translate(0, 0); /* base: cutter carves the crescent (dark) */
+    /* Gentler overshoot than v9's (0.5,1.6,0.4,1): a small spring that still
+       reads as lively on first toggle but no longer fights the page's restraint. */
+    transition: transform 320ms cubic-bezier(0.5, 1.25, 0.4, 1);
+  }
+  .theme-icon .sun-rays {
+    opacity: 0; /* hidden in dark (moon) */
+    transform: scale(0.7); /* narrower delta (was 0.6) → calmer ray bloom on toggle */
+    transform-box: fill-box;   /* so transform-origin:center is the rays' own box */
+    transform-origin: center;
+    transition: opacity 240ms ease, transform 320ms ease;
+  }
+  [data-theme="light"] .theme-icon .moon-cut { transform: translate(12px, -8px); } /* slide cutter off → full sun */
+  [data-theme="light"] .theme-icon .sun-rays { opacity: 1; transform: scale(1); }
+  @media (prefers-reduced-motion: reduce) {
+    .theme-icon .moon-cut, .theme-icon .sun-rays { transition: none; }
+  }
+
+  .nav-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 24px 0 8px;
+    font-weight: 500;
+  }
+  .nav-eyebrow:first-of-type { margin-top: 0; }
+
+  .nav-list { list-style: none; padding: 0; margin: 0 0 4px; }
+  .nav-list li { margin: 0; }
+  .nav-list a {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+    padding: 6px 10px;
+    margin: 0 -10px;
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1.4;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    transition: all 120ms ease;
+    font-weight: 450;
+  }
+  .nav-list a:hover { color: var(--ink); background: var(--bg-2); }
+  .nav-list a.active {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .nav-list a.active .num { color: var(--accent); }
+  .nav-list .num {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.06em;
+    padding-top: 2px;
+    font-weight: 500;
+  }
+
+  main.doc { padding: 0; min-width: 0; order: 1; }
+
+  /* Section outer = content width + two gutters, so the inner usable width is
+     exactly --content-max. Vertical padding tuned DOWN for a 3-section doc: the
+     spacing scale is a max, not a default — 72px felt sparse for this volume. */
+  .section {
+    padding: 56px var(--gutter);
+    max-width: calc(var(--content-max) + 2 * var(--gutter));
+    margin: 0 auto;
+    border-bottom: 1px solid var(--rule);
+    scroll-margin-top: 24px;
+  }
+  .section:last-child { border-bottom: 0; }
+
+  /* Consistent section dividers — all sections use the standard bottom border */
+  @media (max-width: 1200px) { .section { padding: 48px 56px; } }
+  @media (max-width: 760px)  { .section { padding: 40px 24px; } }
+
+  .hero {
+    padding: 72px var(--gutter) 32px; /* tighter bottom: hero content is light, let s1 arrive sooner */
+    max-width: calc(var(--content-max) + 2 * var(--gutter));
+    margin: 0 auto;
+    position: relative;
+    border-bottom: 1px solid var(--rule);
+    overflow: hidden;
+  }
+  /* Hero background: the fixed neural canvas (#neural-bg) is the sole treatment. */
+
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 32px;
+    padding: 6px 12px;
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    background: var(--accent-soft);
+  }
+  .hero-eyebrow::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(40px, 5.5vw, 72px);
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    margin: 0 0 24px; /* on-scale (was 28px) */
+    color: var(--ink);
+    max-width: 22ch;
+  }
+  .hero h1 .accent { color: var(--accent); font-weight: 500; }
+  .hero h1 .light  { font-weight: 300; color: var(--ink-2); }
+
+  .hero-deck {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 680px;
+    margin: 0 0 32px; /* on-scale (was 40px) */
+    font-weight: 380;
+  }
+  .hero-deck b { color: var(--ink); font-weight: 500; }
+
+  /* "At a glance" strip: a hairline rule + three mono label/value pairs. Gives the
+     hero scanning value and a little visual mass without boxes or fills — the
+     lightest way to make the generous hero padding feel intentional. */
+  .hero-facts {
+    display: flex;
+    flex-wrap: wrap;
+    /* Column gap is fluid: 48px on wide viewports, easing down toward 24px as the
+       row narrows, so the spacing tightens gradually instead of snapping at one
+       breakpoint. Row gap (when facts wrap) stays a fixed 24px. */
+    gap: 24px clamp(24px, 4vw, 48px);
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    max-width: var(--content-max);
+  }
+  .hero-fact { display: flex; flex-direction: column; gap: 8px; }
+  .hero-fact .k {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .hero-fact .v {
+    font-family: var(--display);
+    font-size: 15.5px; /* nudged up from 15px so the values sit a half-step closer to the deck */
+    font-weight: 500;
+    color: var(--ink); /* explicit (not inherited) — keeps full definition against the hairline rule */
+    letter-spacing: -0.01em;
+  }
+
+  @media (max-width: 900px) {
+    .hero { padding: 56px 24px 32px; }
+  }
+  /* Below 640px the facts have usually wrapped; pull the row gap and the top
+     padding in further so the stacked "rule + items" block stays compact. The
+     column gap is already handled fluidly by the clamp() above — this only adds
+     the small-screen padding/row tightening that clamp can't express. */
+  @media (max-width: 640px) {
+    .hero-facts { gap: 16px clamp(24px, 4vw, 48px); padding-top: 20px; margin-top: 24px; }
+  }
+
+  .opener {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 32px;
+    align-items: baseline;
+    margin-bottom: 32px; /* aligned to documented spacing scale */
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .opener .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .opener h2 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(26px, 3.2vw, 38px);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    margin: 0;
+    color: var(--ink);
+    max-width: 28ch;
+  }
+  .opener h2 .light  { font-weight: 300; color: var(--ink-2); }
+  .opener h2 .accent { color: var(--accent); }
+  @media (max-width: 760px) {
+    .opener { grid-template-columns: 1fr; gap: 12px; }
+  }
+
+  /* The prose CONTAINER spans the full --content-max so it shares one left edge
+     with every block (grids, code, tables). Paragraph TEXT, however, caps at a
+     readable ~72ch measure — long lines at 15px/1.7 hurt readability, especially
+     in light theme. Net: blocks align edge-to-edge; running text stays comfortable. */
+  .prose {
+    max-width: var(--content-max);
+  }
+  .prose p {
+    margin: 0 0 20px; /* paragraph rhythm: one notch below the 24px block gap, deliberately between 16 and 24 */
+    color: var(--ink);
+    max-width: 72ch; /* readable measure (text only — blocks still span full width) */
+  }
+  .prose p.lead {
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--ink);
+    margin-bottom: 24px; /* on-scale (was 28px) */
+    font-weight: 400;
+    max-width: 72ch;
+  }
+  .prose p strong, .prose p b { font-weight: 600; color: var(--ink); }
+
+  .prose h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 1.3;
+    margin: 48px 0 16px; /* on-scale (was 14px) */
+    color: var(--ink);
+    letter-spacing: -0.015em;
+    display: flex;
+    align-items: baseline;
+    gap: 12px; /* tightened from 14px */
+  }
+  .prose h3::before {
+    content: counter(sec-h3, decimal-leading-zero);
+    counter-increment: sec-h3;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    font-weight: 500;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums; /* even-width digits so counters align */
+  }
+  .section { counter-reset: sec-h3; }
+
+  .prose code, .inline {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--bg-3);
+    color: var(--accent);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+    font-weight: 500;
+    overflow-wrap: anywhere; /* let long unbreakable code tokens (e.g. file paths) wrap instead of forcing horizontal page overflow on mobile */
+  }
+
+  pre.code {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.55; /* tightened to better match the capped 72ch prose rhythm */
+    background: var(--bg-2);
+    color: var(--ink);
+    padding: 22px 24px 22px 24px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 24px 0 32px;
+    position: relative;
+    max-width: var(--content-max);
+  }
+  pre.code::before {
+    content: attr(data-shell);
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  pre.code code { background: transparent; padding: 0; border: 0; color: var(--ink); font-weight: 400; }
+  .tok-c  { color: var(--ink-3); }
+  .tok-k  { color: var(--accent); }
+  .tok-s  { color: var(--green); }
+  .tok-v  { color: var(--violet); }
+
+  /* Copy controls — on every code block and the two install command chips.
+     In a code block this replaces the old data-shell "bash" label in the
+     top-right with a one-tap copy button. All token-driven, so it tracks
+     both themes; the .copied state flips to the green success token. */
+  .copy-btn {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--ink-3);
+    background: var(--bg-3);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 6px 10px;
+    min-height: 28px; /* clears the 24px WCAG 2.5.8 tap-target floor on mobile (was 23px tall) */
+    cursor: pointer;
+    transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+  }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent-line); }
+  .copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .copy-btn.copied { color: var(--green); border-color: var(--green); }
+  /* Pinned top-right of a code block, where the shell label used to sit. */
+  pre.code .copy-btn { position: absolute; top: 10px; right: 12px; z-index: 1; }
+
+  /* Install-card command chip: a mono command line with the copy control on
+     the right, boxed so the command reads as one discrete, copyable unit. */
+  .cmd-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 8px 8px 8px 12px;
+    background: var(--bg-3);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+  }
+  .cmd-line code { color: var(--ink); flex: 1; min-width: 0; word-break: break-word; }
+  .cmd-line .copy-btn { flex: 0 0 auto; }
+
+  .grid-2, .grid-3 {
+    display: grid;
+    gap: 16px;
+    margin: 24px 0 32px; /* consistent with documented spacing scale */
+    max-width: var(--content-max);
+    grid-auto-rows: 1fr; /* force equal height rows for consistent card appearance */
+  }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 1000px) { .grid-3 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 760px)  {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    /* Equal-height only matters while cards are side by side; once stacked,
+       let content govern so single-column cards aren't needlessly tall. */
+    .grid-2 .cell, .grid-3 .cell { min-height: auto; }
+  }
+
+  /* Reusable transition helpers — all values drawn from the documented spacing
+     scale (4/8/12/16/20/24/32/48/...). Use to tune the gap between a block of
+     .prose and the element that follows it (e.g. a grid or table) without
+     introducing one-off margins. */
+  .flow-24 { margin-top: 24px; }
+  .flow-32 { margin-top: 32px; }
+  .flow-tight { margin-top: 16px; }
+
+  .cell {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 24px;
+    position: relative;
+    transition: all 160ms ease;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 150px; /* baseline height so side-by-side cards stay even (lifted on mobile) */
+  }
+  .cell::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 0; height: 2px;
+    background: var(--accent);
+    transition: width 260ms ease;
+  }
+  .cell:hover { border-color: var(--accent-line); background: var(--bg-3); }
+  .cell:hover::before { width: 100%; }
+  .cell .cell-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+  .cell h4 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 18px;
+    line-height: 1.2;
+    margin: 0 0 10px;
+    color: var(--ink);
+    letter-spacing: -0.015em;
+  }
+  .cell p { 
+    margin: 0; 
+    font-size: 14px; 
+    line-height: 1.55; 
+    color: var(--ink-2); 
+    flex: 1; /* allows the description to grow when the card is forced taller by min-height */
+  }
+
+  /* Featured / standalone cards (e.g. the final docs link) */
+  .cell.featured {
+    max-width: none;
+    border-color: var(--accent-line);
+    border-left: 4px solid var(--accent);
+    border-top: 1px solid var(--accent-line); /* extra visual cue */
+    padding-left: 20px;
+    background: var(--bg-hi);
+  }
+  .cell.featured h4 {
+    font-weight: 600;
+  }
+  /* Top-right cue so the featured card reads as deliberately "featured" on a quick
+     scan — a north-east arrow signalling this card opens the full document. */
+  .cell.featured::after {
+    content: "\2197"; /* ↗ */
+    position: absolute;
+    top: 20px; right: 22px; /* aligned with the card's padding so it sits inside the safe area */
+    font-family: var(--mono);
+    font-size: 16px;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.7;
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .cell.featured:hover::after {
+    opacity: 1;
+    transform: translate(2px, -2px);
+  }
+  .cell code { font-size: 12.5px; }
+
+  .tbl-wrap { overflow-x: auto; max-width: var(--content-max); margin: 24px 0 32px; /* consistent with documented spacing scale */ }
+  table.tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    min-width: 720px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-2);
+  }
+  table.tbl caption {
+    caption-side: top;
+    text-align: left;
+    font-size: 13.5px;
+    color: var(--ink-2);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  table.tbl caption b {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  table.tbl thead th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 14px 18px;
+    background: var(--bg-3);
+    border-bottom: 1px solid var(--rule);
+  }
+  table.tbl tbody td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  table.tbl tbody tr:last-child td { border-bottom: 0; }
+  table.tbl tbody td:first-child {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  table.tbl tbody tr:hover td { background: var(--bg-hi); }
+
+  ol.numbered {
+    list-style: none;
+    counter-reset: ol-c;
+    padding: 0;
+    margin: 24px 0 32px; /* unified with other content blocks (was 20px/28px) */
+    max-width: 720px;
+  }
+  ol.numbered li {
+    counter-increment: ol-c;
+    padding: 14px 0 14px 52px;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+    line-height: 1.55;
+    font-size: 14.5px;
+    color: var(--ink);
+  }
+  ol.numbered li:last-child { border-bottom: 0; }
+  ol.numbered li::before {
+    content: counter(ol-c, decimal-leading-zero);
+    position: absolute;
+    left: 0; top: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 24px 0 32px;
+    max-width: var(--content-max);
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 16px;
+  }
+  .callout::before {
+    content: "→";
+    font-family: var(--mono);
+    color: var(--accent);
+    font-size: 18px;
+    line-height: 1;
+    padding-top: 2px;
+  }
+  .callout p { margin: 0; color: var(--ink); font-size: 14.5px; }
+  .callout b { color: var(--accent); font-weight: 600; }
+
+  .prose a, .cell a, .callout a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid var(--accent-line);
+    transition: border-color 140ms ease;
+  }
+  .prose a:hover, .cell a:hover, .callout a:hover { border-bottom-color: var(--accent); }
+
+  /* Footer: multi-line columns, left/right split, with a hairline divider down
+     the middle. Footer outer width matches a section (content + 2 gutters) so its
+     edges line up with the content above. Reduced top padding for this short doc. */
+  .footer {
+    padding: 40px var(--gutter) 56px;
+    max-width: calc(var(--content-max) + 2 * var(--gutter));
+    margin: 0 auto;
+    border-top: 1px solid var(--rule);
+    font-size: 13.5px;
+    color: var(--ink-3);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 24px 48px;
+  }
+  .footer .left {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 4px;
+    line-height: 1.5;
+  }
+  .footer .left .dot {
+    width: 8px; height: 8px;
+    margin-top: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+  }
+  .footer .left .lines { display: flex; flex-direction: column; }
+  .footer .left .lines b {
+    font-family: var(--display);
+    font-weight: 600;
+    color: var(--ink-2);
+    letter-spacing: -0.005em;
+  }
+  /* Hairline divider between the two columns (hidden once the footer wraps). */
+  .footer .right {
+    text-align: right;
+    line-height: 1.5;
+    padding-left: 48px;
+    border-left: 1px solid var(--rule);
+  }
+  .footer .right .name {
+    font-family: var(--display);
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .footer .right a {
+    color: var(--ink-3);
+    text-decoration: none;
+    border-bottom: 1px solid var(--rule-2);
+    display: inline-block;
+    padding: 3px 0; /* lift the tap target above the 24px floor on mobile (was 19px tall) */
+    transition: color 140ms ease, border-color 140ms ease;
+  }
+  .footer .right a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .footer .right .rights {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-top: 4px;
+  }
+  @media (max-width: 760px) {
+    .footer .right { text-align: left; padding-left: 0; border-left: 0; }
+  }
+
+
+  .mobile-toggle {
+    display: none;
+    position: fixed;
+    top: 14px; right: 14px;
+    z-index: 50;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  .mobile-toggle:hover {
+    background: var(--bg-3);
+    border-color: var(--accent-line);
+  }
+  @media (max-width: 980px) {
+    .shell { grid-template-columns: 1fr; }
+    aside.nav {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: 320px;
+      transform: translateX(100%);
+      transition: transform 220ms ease;
+      z-index: 40;
+      background: var(--bg);
+      border-left: 1px solid var(--rule);
+      box-shadow: -8px 0 20px rgba(0,0,0,0.25);
+    }
+    aside.nav.open { transform: translateX(0); }
+    .mobile-toggle { display: flex; }
+    .mobile-toggle.open { display: none !important; }
+    .hero h1 { font-size: 48px; }
+    /* Comfort-size the index links in the touch drawer (≈44px tall) without
+       changing the compact desktop sidebar. */
+    .nav-list a { padding-top: 13px; padding-bottom: 13px; }
+  }
+
+  #neural-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.18;                 /* global default — raised a bit for more presence (still readable) */
+    mix-blend-mode: screen;
+    transition: opacity 180ms ease;
+  }
+  [data-theme="light"] #neural-bg {
+    opacity: 0.13;
+    mix-blend-mode: multiply;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #neural-bg { opacity: 0.18; }
+  }
+
+  /* Two-tier readability hook (wired up by the script near the end of <body>):
+       .dense-prose  — a text-heavy section is in view        → calmer canvas
+       .ultra-dense  — a section with code (pre.code) OR a     → calmest canvas
+                       table (table.tbl) is in view; this is
+                       where the eye is working hardest
+     Tiers: default 0.18 → dense 0.15 → ultra 0.12 (dark);
+            default 0.13 → dense 0.08 → ultra 0.06 (light). */
+  body.dense-prose #neural-bg { opacity: 0.15; }
+  body.ultra-dense #neural-bg { opacity: 0.12; }
+  [data-theme="light"] body.dense-prose #neural-bg { opacity: 0.08; }
+  [data-theme="light"] body.ultra-dense #neural-bg { opacity: 0.06; }
+
+  /* Ensure main content sits above the neural background canvas.
+     We intentionally do not touch aside.nav here — it manages its own z-index
+     (sticky on desktop, 40 on mobile drawer) and we don't want to override it. */
+  .shell { z-index: 1; }

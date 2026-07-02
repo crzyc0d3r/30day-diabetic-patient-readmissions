@@ -1,0 +1,62 @@
+# medi-watch CI — a runnable fourth pipeline alongside infra/ci-cd/{Jenkinsfile,
+# azure-pipelines.yml,cloudbuild.yaml}. On GitHub this produces actual CI-run
+# evidence on every push/PR (the local runner is infra/ci-cd/run_ci_local.sh).
+# Mirrors the upstream Validate + Build stages; keep in lockstep.
+name: medi-watch CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why was this run triggered?"
+        default: "manual"
+
+jobs:
+  validate:
+    name: Validate (lint + structural tests + notebooks + pins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install validate tooling
+        # scikit-learn + joblib: test_drift_sim exercises champion-impact, which
+        # imports helpers/evaluation.py (sklearn metrics) and the joblib scorer.
+        run: pip install ruff pytest nbformat numpy pandas scipy statsmodels scikit-learn joblib
+      - name: Requirements pin lockstep
+        run: python helpers/check_requirements_pins.py
+      - name: Ruff lint (advisory)
+        run: ruff check helpers/ test/ || true
+      - name: Structural pytest (no-model unit + cleaning integration tests)
+        run: python -m pytest test/test_cicd_trigger.py test/test_eda_stats.py test/test_drift_sim.py test/test_constants.py test/test_pipeline_integration.py -q
+      - name: Notebooks parse as nbformat
+        run: |
+          python - <<'PY'
+          import nbformat, glob
+          fs = sorted(glob.glob("pipeline/*.ipynb"))
+          for f in fs:
+              nbformat.read(f, as_version=4)
+          print(f"{len(fs)} notebooks parsed")
+          PY
+      - name: Remote-trigger handoff demo (mock CI)
+        run: python infra/ci-cd/demo_remote_trigger.py
+
+  build:
+    name: Build (compose config + inference image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the deploy compose config
+        # A minimal .env satisfies the ${POSTGRES_*} substitutions so `config`
+        # validates the whole stack definition (every service, build context,
+        # and Dockerfile path) without booting anything.
+        run: |
+          cd infra
+          printf 'POSTGRES_USER=mediwatch\nPOSTGRES_PASSWORD=mediwatch\nPOSTGRES_DB=mediwatch\n' > .env
+          docker compose config -q && echo "compose config valid"
+      - name: Build the inference-api image (the @champion server CI/CD deploys)
+        run: docker build -f infra/inference-api/Dockerfile -t medi-watch-inference:ci .

@@ -1,0 +1,419 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "title": "MediWatch \u2014 Model KPIs",
+  "tags": [
+    "medi-watch",
+    "model",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Model performance over time",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Validation F1 \u2014 every MLflow run (medi-watch-readmission)",
+      "description": "Time series of every run that logged a `val_f1`, `test_f1`, or `refit_val_f1` metric. Each model's runs become a separate series so we can see whether re-trains are tracking, regressing, or churning the leaderboard.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "mlflowPostgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT to_timestamp(r.start_time/1000.0) AS \"time\",\n       COALESCE(NULLIF(rt.value, ''), substring(r.run_uuid,1,8)) AS metric,\n       m.value AS value\nFROM metrics m\nJOIN runs r        ON r.run_uuid = m.run_uuid\nJOIN experiments e ON e.experiment_id = r.experiment_id\nLEFT JOIN tags rt  ON rt.run_uuid = r.run_uuid AND rt.key = 'mlflow.runName'\nWHERE e.name = 'medi-watch-readmission'\n  AND m.key = 'val_f1'\n  AND m.value IS NOT NULL\n  AND $__unixEpochFilter(r.start_time/1000)\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 1,
+          "decimals": 3,
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 6,
+            "showPoints": "always",
+            "lineWidth": 0,
+            "spanNulls": false,
+            "axisGridShow": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "last",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "timeFrom": "2d"
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Drift surface",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "@champion model age",
+      "description": "Wall-clock age of the model version currently tagged `@champion` for `medi-watch-readmission`. A long gap with active drift checks means retrain triggers are firing but candidates are getting rejected by the \u00a710 promotion gate.",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 6,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "mlflowPostgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT EXTRACT(EPOCH FROM (now() - to_timestamp(mv.creation_time / 1000))) / 86400.0 AS age_days\nFROM registered_model_aliases rma\nJOIN model_versions mv\n  ON mv.name = rma.name\n AND mv.version::int = rma.version::int\nWHERE rma.name = 'medi-watch-readmission'\n  AND rma.alias = 'champion'\nORDER BY mv.creation_time DESC\nLIMIT 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 14
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Registered versions \u2014 medi-watch-readmission",
+      "description": "Every registered version with its aliases (@champion / @rejected), creation time, and any `rejected_reason` tag set by the \u00a7retrain_on_drift gate.",
+      "gridPos": {
+        "x": 18,
+        "y": 12,
+        "w": 6,
+        "h": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "mlflowPostgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT mv.version::int AS version,\n       to_timestamp(mv.creation_time / 1000) AT TIME ZONE 'UTC' AS created,\n       COALESCE(STRING_AGG(DISTINCT rma.alias, ',' ORDER BY rma.alias), '') AS aliases,\n       MAX(CASE WHEN mvt.key = 'rejected_reason' THEN mvt.value END) AS rejected_reason,\n       MAX(CASE WHEN mvt.key = 'test_f1' THEN mvt.value END) AS test_f1\nFROM model_versions mv\nLEFT JOIN registered_model_aliases rma ON rma.name = mv.name AND rma.version::int = mv.version::int\nLEFT JOIN model_version_tags mvt ON mvt.name = mv.name AND mvt.version::int = mv.version::int\nWHERE mv.name = 'medi-watch-readmission'\nGROUP BY mv.version, mv.creation_time\nORDER BY mv.version DESC\nLIMIT 25"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Live inference (production API)",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Inference requests per minute (by model version)",
+      "description": "Rate of /invocations calls served by the inference API, split by the @champion version that handled each call and request status. Confirms the API is receiving traffic and lets the operator see a version rollover as a series break.",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rayPrometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model_version, status) (rate(medi_watch_inference_requests_total[1m])) * 60",
+          "legendFormat": "v{{model_version}} \u00b7 {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Inference latency \u2014 p50 / p95 / p99 (by model version)",
+      "description": "Histogram quantiles over the medi_watch_inference_latency_seconds bucket series. The p95 line is the production-SLO indicator; a spike that does not coincide with a champion swap usually means upstream payload-size growth or downstream slow load.",
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rayPrometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le, model_version) (rate(medi_watch_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "p50 \u00b7 v{{model_version}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, model_version) (rate(medi_watch_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95 \u00b7 v{{model_version}}"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le, model_version) (rate(medi_watch_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "p99 \u00b7 v{{model_version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Predicted P(readmit=1) \u2014 mean and p95 (by model version)",
+      "description": "Quantiles over the medi_watch_inference_score histogram. The 0.5 line is the decision threshold for class=1; sustained drift away from the validation-time score distribution is the inference-side counterpart to data drift and a strong retraining signal.",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rayPrometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model_version) (rate(medi_watch_inference_score_sum[5m])) / sum by (model_version) (rate(medi_watch_inference_score_count[5m]))",
+          "legendFormat": "mean \u00b7 v{{model_version}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, model_version) (rate(medi_watch_inference_score_bucket[5m])))",
+          "legendFormat": "p95 \u00b7 v{{model_version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 1,
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Rows scored \u2014 last 24h",
+      "description": "Total prediction rows the inference API has served in the last 24 hours across all versions. The increase() over 24h smooths the deployment-startup spike that prometheus_client's instance-counter reset would otherwise produce.",
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 6,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rayPrometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(medi_watch_inference_rows_total[24h]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "@champion reloads \u2014 last 24h",
+      "description": "Count of /reload calls that rebound the inference API to a new @champion alias in the last 24 hours. Driven by the retrain_on_drift DAG's gate task; a non-zero value here means a model rollover happened in the visible window and corresponds to series breaks on the latency / score panels above.",
+      "gridPos": {
+        "x": 18,
+        "y": 32,
+        "w": 6,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "rayPrometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(medi_watch_champion_reload_total[24h]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+# Kubernetes manifest for the medi-watch Ray cluster (1 head + 2 workers).
+#
+# Kubernetes deployment note:
+# Hand-rolled head/worker Deployments instead of the KubeRay operator, so the
+# capstone manifest is self-contained and doesn't depend on installing a CRD.
+# For production traffic, replace this with a KubeRay `RayCluster` CR, which
+# handles autoscaling, node-pool affinity, and head-pod placement correctly.
+# See https://docs.ray.io/en/latest/cluster/kubernetes/getting-started.html.
+#
+# This manifest exposes both the dashboard (8265) and the Ray Client port
+# (10001). nb07's `init_ray()` will reach it at
+#   ray://ray-head.medi-watch.svc.cluster.local:10001.
+#
+# Image is `${ECR_REGISTRY}/mlops-ray:${IMAGE_TAG}` (same convention as the
+# other manifests). Substitute the registry host + build SHA via `envsubst`
+# before applying. Locally ECR_REGISTRY is a placeholder and
+# imagePullPolicy: IfNotPresent keeps it from being contacted.
+#
+# Local quickstart:
+#
+#   docker compose -f ../docker-compose.yml build ray
+#   docker tag mlops-ray:latest local/mlops-ray:latest
+#   kind load docker-image local/mlops-ray:latest --name <cluster>
+#   ECR_REGISTRY=local IMAGE_TAG=latest envsubst < ray.yaml | kubectl apply -f -
+#   kubectl port-forward -n medi-watch svc/ray-head 8265:8265
+#   open http://localhost:8265
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: medi-watch
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ray-config
+  namespace: medi-watch
+data:
+  RAY_HEAD_HOST:        "ray-head"
+  RAY_HEAD_GCS_PORT:    "6379"
+  RAY_HEAD_CLIENT_PORT: "10001"
+  RAY_HEAD_DASHBOARD_PORT: "8265"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ray-head
+  namespace: medi-watch
+  labels: {app: ray, component: head}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}  # GCS state lives on the head pod
+  selector:
+    matchLabels: {app: ray, component: head}
+  template:
+    metadata:
+      labels: {app: ray, component: head}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: head
+          image: ${ECR_REGISTRY}/mlops-ray:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["bash", "-c"]
+          args:
+            - |
+              ray start --head \
+                --port=6379 \
+                --ray-client-server-port=10001 \
+                --dashboard-host=0.0.0.0 \
+                --dashboard-port=8265 \
+                --metrics-export-port=8080 \
+                --num-cpus=2 \
+                --block
+          ports:
+            - {containerPort: 6379,  name: gcs}
+            - {containerPort: 10001, name: client}
+            - {containerPort: 8265,  name: dashboard}
+            - {containerPort: 8080,  name: metrics}
+          envFrom:
+            - configMapRef: {name: ray-config}
+          livenessProbe:
+            httpGet: {path: /, port: dashboard}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket: {port: client}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: {cpu: "500m", memory: "1Gi"}
+            limits:   {cpu: "2",    memory: "4Gi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ray-head
+  namespace: medi-watch
+  labels: {app: ray, component: head}
+spec:
+  type: ClusterIP
+  selector: {app: ray, component: head}
+  ports:
+    - {name: gcs,       port: 6379,  targetPort: 6379}
+    - {name: client,    port: 10001, targetPort: 10001}
+    - {name: dashboard, port: 8265,  targetPort: 8265}
+    - {name: metrics,   port: 8080,  targetPort: 8080}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ray-worker
+  namespace: medi-watch
+  labels: {app: ray, component: worker}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ray, component: worker}
+  template:
+    metadata:
+      labels: {app: ray, component: worker}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: worker
+          image: ${ECR_REGISTRY}/mlops-ray:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          command: ["bash", "-c"]
+          args:
+            - |
+              # Block waiting for head GCS to come up, then join.
+              until getent hosts ray-head; do sleep 1; done
+              ray start \
+                --address=ray-head:6379 \
+                --num-cpus=2 \
+                --block
+          envFrom:
+            - configMapRef: {name: ray-config}
+          livenessProbe:
+            exec:
+              command: ["bash", "-c", "ray status >/dev/null 2>&1"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: {cpu: "500m", memory: "1Gi"}
+            limits:   {cpu: "2",    memory: "4Gi"}

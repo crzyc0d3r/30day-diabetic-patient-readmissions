@@ -1,0 +1,54 @@
+<!-- =========================================================================
+     NEURAL MESH BACKGROUND: Pancreatic Islet / Beta Cell Edition
+     Cells with nuclei + insulin granules. Vesicles travel between them.
+     Themed for the medi-watch diabetes project. Inspired by NVIDIA Spark.
+
+     This is a self-contained version (no external .js required).
+     Paste the three blocks below into any medi-watch style HTML doc.
+
+     PLACEMENT:
+       1. Right after <body> → the <canvas> + <style> block
+       2. Right before </body> → the <script> block (or anywhere after the canvas)
+
+     The effect is:
+       - Sparse glowing node graph
+       - Signal particles continuously traveling along the edges (the "talking" feel)
+       - Respects your existing --accent CSS variable + data-theme
+       - Mouse moves influence the field + spawn occasional bright signals
+       - Pauses when the tab is hidden (efficient)
+       - Pauses during window resize (prevents jank while dragging)
+       - Respects prefers-reduced-motion
+
+     NOTE: neural-mesh-background.js is the maintained source and carries
+     the current tuning (slower particle travel, smaller node glows, etc.).
+     Prefer loading the external script when possible.
+========================================================================= -->
+
+<!-- BLOCK 1: Canvas + Styles (paste immediately after <body>) -->
+<canvas id="neural-bg" aria-hidden="true"></canvas>
+<style>
+  #neural-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.26;                 /* lowered for better text readability */
+    mix-blend-mode: screen;
+    transition: opacity 180ms ease;
+  }
+  [data-theme="light"] #neural-bg {
+    opacity: 0.12;
+    mix-blend-mode: multiply;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #neural-bg { opacity: 0.18; }
+  }
+  .shell, aside.nav, .mobile-toggle { position: relative; z-index: 1; }
+</style>
+
+<!-- BLOCK 2: The engine (paste before </body>, or load as external script) -->
+<script>
+/*! NeuralMeshBackground: self-contained (inline edition) */
+(function(){'use strict';const N={canvas:null,ctx:null,nodes:[],edges:[],particles:[],rafId:null,running:!1,lastTime:0,accentColor:'#5b9eff',mouse:{x:0,y:0,active:!1},reducedMotion:!1,config:{nodeCount:78,connectionDistance:185,longRangeChance:.018,particleCount:46,baseOpacity:.38,particleSpeedMin:.018,particleSpeedMax:.046,nodeDrift:.012,glowIntensity:.85},init(e={}){if(this.canvas=document.getElementById('neural-bg'),!this.canvas)return void console.warn('[NeuralMesh] No #neural-bg canvas.');this.ctx=this.canvas.getContext('2d',{alpha:!0}),Object.assign(this.config,e),this.reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches,this.updateAccentColor(),this.setupThemeObserver(),this.setupCanvas(),this.buildGraph(),this.createParticles(),this.attachInteractions(),this.start(),setInterval(()=>{this.running&&!this.reducedMotion&&this.jitterParticles(.3)},42e3)},updateAccentColor(){const e=document.documentElement.getComputedStyle(e).getPropertyValue('--accent').trim();e&&(this.accentColor=e)},setupThemeObserver(){new MutationObserver(()=>this.updateAccentColor).observe(document.documentElement,{attributes:!0,attributeFilter:['data-theme']})},setupCanvas(){const e=()=>{const t=Math.max(1,Math.min(2,window.devicePixelRatio||1)),i=window.innerWidth,s=window.innerHeight;this.canvas.width=Math.floor(i*t),this.canvas.height=Math.floor(s*t),this.canvas.style.width=i+'px',this.canvas.style.height=s+'px',this.ctx.setTransform(t,0,0,t,0,0),this.nodes.length>0&&(this.buildGraph(),this.respawnParticlesForNewSize())};window.addEventListener('resize',()=>{clearTimeout(this._resizeTimer),this._resizeTimer=setTimeout(e,120)},{passive:!0}),e()},buildGraph(){const e=window.innerWidth,t=window.innerHeight,i=[],s=[];for(let e=0;e<this.config.nodeCount;e++){let s,o;const n=Math.random()<.55;if(n){const i=120+Math.random()*(e-240),n=80+Math.random()*(t-160),a=90+Math.random()*210,r=Math.random()*Math.PI*2;s=i+Math.cos(r)*a*(.4+Math.random()*.9),o=n+Math.sin(r)*a*(.35+Math.random()*.85)}else s=60+Math.random()*(e-120),o=60+Math.random()*(t-120);const a=Math.random()<.09,r=a?2.8+Math.random()*1.9:1.15+Math.random()*1.35;i.push({x:s,y:o,r:r,vx:(Math.random()-.5)*this.config.nodeDrift,vy:(Math.random()-.5)*this.config.nodeDrift,isHub:a,pulse:0})}for(let e=0;e<i.length;e++)for(let t=e+1;t<i.length;t++){const o=i[e].x-i[t].x,n=i[e].y-i[t].y,a=Math.hypot(o,n),r=a>this.config.connectionDistance*1.65&&Math.random()<this.config.longRangeChance,l=a<this.config.connectionDistance&&Math.random()<.82;(l||r)&&s.push({a:e,b:t,dist:a,isLong:r})}this.nodes=i,this.edges=s},createParticles(){const e=[];for(let t=0;t<this.config.particleCount;t++){const i=Math.floor(Math.random()*this.edges.length),s=this.edges[i];s&&e.push({edgeIdx:i,t:Math.random(),speed:this.config.particleSpeedMin+Math.random()*(this.config.particleSpeedMax-this.config.particleSpeedMin),size:.9+Math.random()*1.35,dir:Math.random()>.5?1:-1,life:1})}this.particles=e},respawnParticlesForNewSize(){const e=this.config.particleCount;for(;this.particles.length<e&&this.edges.length>0;){const t=Math.floor(Math.random()*this.edges.length);this.particles.push({edgeIdx:t,t:Math.random(),speed:this.config.particleSpeedMin+Math.random()*(this.config.particleSpeedMax-this.config.particleSpeedMin),size:.9+Math.random()*1.35,dir:Math.random()>.5?1:-1,life:1})}},jitterParticles(e=.25){const t=Math.floor(this.particles.length*e);for(let e=0;e<t;e++){const t=this.particles[e];t&&(t.t=Math.random())}},attachInteractions(){const e=this.canvas;e&&(window.addEventListener('mousemove',t=>{this.mouse.x=t.clientX,this.mouse.y=t.clientY,this.mouse.active=!0,!this.reducedMotion&&this.edges.length>0&&Math.random()<.14&&this.spawnParticleNearCursor(),this.applyMouseInfluence()},{passive:!0}),window.addEventListener('mouseleave',()=>{this.mouse.active=!1}),window.addEventListener('touchmove',t=>{t.touches.length>0&&(this.mouse.x=t.touches[0].clientX,this.mouse.y=t.touches[0].clientY,this.mouse.active=!0)},{passive:!0}),document.addEventListener('visibilitychange',()=>{document.hidden?this.pause():this.resume()}))},spawnParticleNearCursor(){if(!this.edges.length)return;let e=-1,t=1/0;for(let i=0;i<this.edges.length;i++){const s=this.edges[i],o=this.nodes[s.a],n=this.nodes[s.b],a=(o.x+n.x)*.5,r=(o.y+n.y)*.5,l=Math.hypot(a-this.mouse.x,r-this.mouse.y);l<t&&(t=l,e=i)}e!==-1&&t<380&&this.particles.push({edgeIdx:e,t:.15+Math.random()*.7,speed:this.config.particleSpeedMax*(.85+Math.random()*.5),size:1.6+Math.random()*.9,dir:Math.random()>.5?1:-1,life:.9+Math.random()*.6})},applyMouseInfluence(){if(!this.mouse.active)return;const e=.6;for(let t=0;t<this.nodes.length;t++){const i=this.nodes[t],s=i.x-this.mouse.x,o=i.y-this.mouse.y,n=Math.hypot(s,o)+.1;if(n<210){const a=(1-n/210)*e;i.vx+=(s/n)*a*.8,i.vy+=(o/n)*a*.8}}},start(){this.running||(this.running=!0,this.lastTime=performance.now(),this.loop())},pause(){this.running=!1,this.rafId&&cancelAnimationFrame(this.rafId)},resume(){this.running||(this.running=!0,this.lastTime=performance.now(),this.loop())},loop(){if(!this.running)return;const e=performance.now(),t=Math.min((e-this.lastTime)/16.67,2.8);this.lastTime=e,this.update(t),this.draw(),this.rafId=requestAnimationFrame(()=>this.loop())},update(e){const t=this.nodes,i=this.edges,s=this.particles,o=this.config,n=window.innerWidth,a=window.innerHeight;for(let o=0;o<t.length;o++){const r=t[o];if(!this.reducedMotion){r.x+=r.vx*e,r.y+=r.vy*e;const t=80+o%7*((n-160)/7),i=70+Math.floor(o/9)*((a-140)/9);r.vx*=.978,r.vy*=.978,r.vx+=(t-r.x)*.000012*e,r.vy+=(i-r.y)*.000012*e}r.x<40?(r.x=40,r.vx=Math.abs(r.vx)*.6):r.x>n-40&&(r.x=n-40,r.vx=-Math.abs(r.vx)*.6),r.y<40?(r.y=40,r.vy=Math.abs(r.vy)*.6):r.y>a-40&&(r.y=a-40,r.vy=-Math.abs(r.vy)*.6),r.pulse>0&&(r.pulse=Math.max(0,r.pulse-.018*e))}for(let o=s.length-1;o>=0;o--){const n=s[o],a=i[n.edgeIdx];if(!a){s.splice(o,1);continue}const r=t[a.a],l=t[a.b];n.t+=n.speed*n.dir*e,n.t>1.02?(n.t=1.02,n.dir=-1,r&&r.pulse=Math.min(1.6,r.pulse+.9)):n.t<-0.02&&(n.t=-0.02,n.dir=1,l&&l.pulse=Math.min(1.6,l.pulse+.9)),n.life-=.0012*e,n.life<=0&&(n.edgeIdx=Math.floor(Math.random()*i.length),n.t=.2+Math.random()*.6,n.life=.7+Math.random()*.9,n.speed=o.particleSpeedMin+Math.random()*(o.particleSpeedMax-o.particleSpeedMin))}!this.reducedMotion&&s.length<o.particleCount*1.15&&Math.random()<.06&&i.length&&s.push({edgeIdx:Math.floor(Math.random()*i.length),t:.3+Math.random()*.4,speed:o.particleSpeedMin+Math.random()*.028,size:1+Math.random()*.9,dir:Math.random()>.5?1:-1,life:.85+Math.random()*.6}),s.length>o.particleCount*1.7&&(s.length=Math.floor(1.5*o.particleCount))},draw(){const e=this.ctx,t=window.innerWidth,i=window.innerHeight,s=this.nodes,o=this.edges,n=this.particles,a=this.accentColor,r=this.config,l=this.reducedMotion?.22:r.baseOpacity,d=this.reducedMotion?.06:.085;if(e.clearRect(0,0,t,i),e.strokeStyle=a,e.lineWidth=.7,o.forEach((t=>{const i=s[t.a],o=s[t.b];e.globalAlpha=(t.isLong?.28:1)*d*l,e.beginPath(),e.moveTo(i.x,i.y),e.lineTo(o.x,o.y),e.stroke()})),s.forEach((t=>{const i=t.pulse*.7;e.save(),e.shadowColor=a,e.shadowBlur=t.isHub?18:11,e.globalAlpha=(t.isHub?.22:.15)*l+i*.18,e.beginPath(),e.arc(t.x,t.y,t.r*(t.isHub?3.2:2.65)+3.5*i,0,2*Math.PI),e.fillStyle=a,e.fill(),e.restore(),e.globalAlpha=(t.isHub?.85:.72)*l+i*.45,e.fillStyle=a,e.beginPath(),e.arc(t.x,t.y,t.r+1.1*i,0,2*Math.PI),e.fill(),e.globalAlpha=.95*l+i*.3,e.fillStyle='#fff',e.beginPath(),e.arc(t.x,t.y,Math.max(.6,t.r*.35),0,2*Math.PI),e.fill()})),e.shadowColor=a,e.shadowBlur=6,n.forEach((t=>{const i=o[t.edgeIdx];if(!i)return;const n=s[i.a],d=s[i.b],c=Math.max(0,Math.min(1,t.t)),h=n.x+(d.x-n.x)*c,u=n.y+(d.y-n.y)*c,p=t.life*(.7+Math.sin(12*c)*.15);e.globalAlpha=.95*p*l,e.fillStyle='#fff',e.beginPath(),e.arc(h,u,1.05*t.size,0,2*Math.PI),e.fill(),e.globalAlpha=.7*p*l,e.fillStyle=a,e.beginPath(),e.arc(h,u,2.1*t.size,0,2*Math.PI),e.fill();const m=Math.max(0,Math.min(1,c-.06*t.dir)),f=n.x+(d.x-n.x)*m,g=n.y+(d.y-n.y)*m;e.globalAlpha=.28*p*l,e.fillStyle=a,e.beginPath(),e.arc(f,g,1.35*t.size,0,2*Math.PI),e.fill()})),e.shadowBlur=0,e.globalAlpha=1},pause(){this.running=!1,this.rafId&&cancelAnimationFrame(this.rafId)},resume(){this.running||(this.running=!0,this.lastTime=performance.now(),this.loop())}};function e(){document.getElementById('neural-bg')&&N.init()}'loading'===document.readyState?document.addEventListener('DOMContentLoaded',e,{once:!0}):setTimeout(e,0),window.NeuralMeshBackground=N,window.initNeuralBackground=()=>N.init()})();
+</script>
+<!-- End of Neural Mesh snippet -->

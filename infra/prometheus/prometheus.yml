@@ -1,0 +1,35 @@
+# medi-watch Prometheus config: combines Ray's auto-generated cluster-metrics
+# service discovery with a static scrape for the inference API's /metrics
+# endpoint. Owns the scrape graph in place of a bind-mount of Ray's
+# session-local prometheus.yml so the inference series survive Ray session restarts.
+#
+# Mounted into the prometheus container at /etc/prometheus/prometheus.yml
+# by infra/docker-compose.yml.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus itself, handy for confirming the stack is alive.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Ray cluster metrics. Ray writes its discovery file to
+  # /tmp/ray/prom_metrics_service_discovery.json on the head node and the
+  # ray-tmp volume mount makes the same path visible inside prometheus.
+  - job_name: ray
+    file_sd_configs:
+      - files:
+          - "/tmp/ray/prom_metrics_service_discovery.json"
+
+  # Inference API: the four medi_watch_inference_* series and the
+  # medi_watch_champion_reload_total counter created by infra/inference-api/main.py.
+  - job_name: inference-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["inference-api:8002"]
+        labels:
+          service: "medi-watch-inference"
+          tier: "production"

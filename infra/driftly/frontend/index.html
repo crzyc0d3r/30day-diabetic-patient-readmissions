@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Driftly · model drift dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<script>
+  // Set the saved/preferred theme before first paint to avoid a flash.
+  (function () {
+    try {
+      var s = localStorage.getItem('driftly-theme');
+      var t = s || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<!-- Same living neural-mesh background as the medi-watch README (the real
+     assets/neural-mesh-background.js). Fixed, behind everything, theme-aware. -->
+<canvas id="neural-bg" aria-hidden="true" title="Subtle pancreatic islet cell signaling background"></canvas>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+<script src="/assets/neural-mesh-background.js"></script>
+</body>
+</html>

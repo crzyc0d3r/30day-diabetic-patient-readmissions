@@ -1,0 +1,48 @@
+# eksctl ClusterConfig for the medi-watch inference API.
+#
+# This provisions the ONLY cloud cluster medi-watch uses. It hosts the
+# inference-api Deployment and nothing else. Airflow / Ray / MLflow stay in
+# docker-compose. The Airflow `retrain_on_drift` DAG reaches this cluster as a
+# client to `kubectl rollout restart` the Deployment on a new @champion.
+#
+# Provision (~15 min):
+#   eksctl create cluster -f infra/aws/eksctl-cluster.yaml
+#
+# Tear down (stops billing, EKS control plane and EC2 nodes are not free):
+#   eksctl delete cluster -f infra/aws/eksctl-cluster.yaml
+#
+# Sizing rationale: the inference image is CPU-only (FastAPI + sklearn/xgboost
+# scorer, no GPU). Two t3.medium nodes comfortably hold the Deployment's 2
+# replicas (250m CPU / 1Gi request each) plus headroom for the HPA to scale to
+# 6 and for system DaemonSets. Bump instanceType / desiredCapacity for real load.
+
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: medi-watch          # MUST match EKS_CLUSTER_NAME in deploy.sh / the DAG
+  region: us-east-1         # MUST match AWS_REGION. Override here and in env together
+  version: "1.31"
+
+# OIDC + IRSA enabled so a future revision can bind the inference pods to an IAM
+# role (e.g. to pull the model from an S3-backed MLflow artifact store) without
+# baking long-lived keys into the image. Not required for the rollout-restart
+# loop itself, but cheap to enable now and painful to retrofit.
+iam:
+  withOIDC: true
+
+managedNodeGroups:
+  - name: inference-ng
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    volumeSize: 20
+    # Private networking for the nodes. The EKS API server stays public-by-default
+    # so your workstation and the Airflow worker can reach it with valid creds.
+    privateNetworking: true
+    labels:
+      workload: inference
+    tags:
+      project: medi-watch
+      component: inference-api

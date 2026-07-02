@@ -1,0 +1,36 @@
+apiVersion: 1
+
+# Provisioned datasources for the model-KPIs dashboard.
+# When GF_PATHS_PROVISIONING is overridden to /etc/grafana/provisioning, Ray's
+# own auto-generated datasources YAML stops being loaded, so we redeclare the
+# Prometheus datasource here (with uid=rayPrometheus) so the imported Ray
+# dashboards keep working, and add the Postgres datasources the medi-watch
+# dashboards query.
+
+datasources:
+  # Same uid Ray's auto-provisioning uses. The imported Ray dashboards refer
+  # to this datasource by uid, not name.
+  - name: Prometheus
+    type: prometheus
+    uid: rayPrometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  # MLflow backend store, used to surface registry alias age (@champion
+  # version creation_time) and per-run val/test metrics over time.
+  - name: MLflow (Postgres)
+    type: postgres
+    uid: mlflowPostgres
+    access: proxy
+    url: postgres:5432
+    user: ${POSTGRES_USER}
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      database: mlflow
+      sslmode: disable
+      postgresVersion: 1800
+      timescaledb: false
+    editable: false

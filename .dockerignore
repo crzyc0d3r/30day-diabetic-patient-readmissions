@@ -1,0 +1,37 @@
+# Repo-root Docker build context (used only by the inference-api image, whose
+# context is the repo root so it can COPY helpers/model_loading.py). Everything
+# heavy or irrelevant to that image is excluded so the daemon receives only
+# source — without this the context would be ~6.7GB (.venv + data + ...).
+#
+# NOTE: only builds whose context is the repo root are affected by this file.
+# The airflow/mlflow/ray images build from their own infra/ subdir contexts and
+# are unaffected.
+
+# Virtualenvs / interpreters
+.venv/
+.venv-test/
+test-01/
+
+# Large data + model artifacts (the inference image pulls models from MLflow, not disk)
+data/
+mlruns/
+orig_dataset/
+*.joblib
+*.npz
+*.parquet
+*.csv
+
+# Generated / tooling
+ui-eval/
+node_modules/
+**/__pycache__/
+*.pyc
+.git/
+.claude/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Docs / notebooks not needed at serve time
+*.ipynb
+docs/
+*.html

@@ -1,0 +1,165 @@
+{
+  "scenario": "los_utilization_shift",
+  "verdict": "ALERT",
+  "reference_rows": 99340,
+  "current_rows": 99340,
+  "thresholds": {
+    "warn": 0.1,
+    "alert": 0.2
+  },
+  "columns": [
+    {
+      "column": "time_in_hospital",
+      "method": "PSI",
+      "statistic": 3.5399,
+      "status": "ALERT"
+    },
+    {
+      "column": "num_lab_procedures",
+      "method": "KS",
+      "statistic": 0.3438,
+      "status": "ALERT"
+    },
+    {
+      "column": "num_procedures",
+      "method": "PSI",
+      "statistic": 0.0001,
+      "status": "OK"
+    },
+    {
+      "column": "num_medications",
+      "method": "KS",
+      "statistic": 0.297,
+      "status": "ALERT"
+    },
+    {
+      "column": "number_inpatient",
+      "method": "KS",
+      "statistic": 0.6668,
+      "status": "ALERT"
+    },
+    {
+      "column": "number_emergency",
+      "method": "KS",
+      "statistic": 0.0009,
+      "status": "OK"
+    },
+    {
+      "column": "number_diagnoses",
+      "method": "PSI",
+      "statistic": 0.0,
+      "status": "OK"
+    },
+    {
+      "column": "diag_1_cat",
+      "method": "PSI",
+      "statistic": 0.0002,
+      "status": "OK"
+    },
+    {
+      "column": "diag_2_cat",
+      "method": "PSI",
+      "statistic": 0.0002,
+      "status": "OK"
+    },
+    {
+      "column": "diag_3_cat",
+      "method": "PSI",
+      "statistic": 0.0001,
+      "status": "OK"
+    },
+    {
+      "column": "admission_type",
+      "method": "PSI",
+      "statistic": 0.0001,
+      "status": "OK"
+    },
+    {
+      "column": "discharge_group",
+      "method": "PSI",
+      "statistic": 0.0001,
+      "status": "OK"
+    },
+    {
+      "column": "payer_grouped",
+      "method": "PSI",
+      "statistic": 0.0001,
+      "status": "OK"
+    },
+    {
+      "column": "race",
+      "method": "PSI",
+      "statistic": 0.0,
+      "status": "OK"
+    },
+    {
+      "column": "gender",
+      "method": "PSI",
+      "statistic": 0.0,
+      "status": "OK"
+    },
+    {
+      "column": "insulin",
+      "method": "PSI",
+      "statistic": 0.0,
+      "status": "OK"
+    },
+    {
+      "column": "metformin",
+      "method": "PSI",
+      "statistic": 0.0,
+      "status": "OK"
+    },
+    {
+      "column": "A1Cresult",
+      "method": "PSI",
+      "statistic": 0.0001,
+      "status": "OK"
+    },
+    {
+      "column": "change",
+      "method": "PSI",
+      "statistic": 0.0,
+      "status": "OK"
+    }
+  ],
+  "champion_impact": {
+    "reference": {
+      "precision_pos": 0.19198167239404354,
+      "recall_pos": 0.6666077426197631,
+      "f1_pos": 0.29810865827387895,
+      "balanced_accuracy": 0.6529991886024996,
+      "matthews_cc": 0.19881297765028164,
+      "cohens_kappa": 0.14730977626911124,
+      "auc_roc": 0.7140209623009763,
+      "auc_pr": 0.2797716557322655,
+      "brier": 0.2132718490039916,
+      "log_loss": 0.6167182362234159
+    },
+    "current": {
+      "precision_pos": 0.18495999221733103,
+      "recall_pos": 0.6738437001594896,
+      "f1_pos": 0.29025055817415035,
+      "balanced_accuracy": 0.646629529458308,
+      "matthews_cc": 0.18894613153816514,
+      "cohens_kappa": 0.13625995919672274,
+      "auc_roc": 0.7059775679513209,
+      "auc_pr": 0.26564521661681256,
+      "brier": 0.2214893667052169,
+      "log_loss": 0.634538764542759
+    },
+    "delta": {
+      "precision_pos": -0.007021680176712508,
+      "recall_pos": 0.007235957539726501,
+      "f1_pos": -0.007858100099728593,
+      "balanced_accuracy": -0.006369659144191631,
+      "matthews_cc": -0.009866846112116495,
+      "cohens_kappa": -0.011049817072388501,
+      "auc_roc": -0.008043394349655397,
+      "auc_pr": -0.014126439115452916,
+      "brier": 0.008217517701225308,
+      "log_loss": 0.01782052831934311
+    },
+    "threshold": 0.48999999999999994
+  }
+}

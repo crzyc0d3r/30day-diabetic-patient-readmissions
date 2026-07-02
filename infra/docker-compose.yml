@@ -1,0 +1,584 @@
+# Local-developer compose for the medi-watch MLOps stack.
+#
+# Brings up Postgres (shared by Airflow + MLflow), MLflow with
+# the model registry enabled, the Airflow scheduler/webserver, the FastAPI
+# inference service, and Grafana with the medi-watch dashboard pre-provisioned.
+# Triggered by `docker compose up --wait` locally and by the Azure Pipelines
+# `e2e_smoke` stage in CI.
+#
+# Assumes infra/.env exists (copy from infra/.env.example). Volumes under
+# ./mlruns and ./postgres-data persist across restarts. Remove them to reset.
+name: mlops
+
+networks:
+  mlops-net:
+    driver: bridge
+  # minikube's own docker network. The airflow worker joins it so kubectl can
+  # reach the cluster API (https://192.168.49.2:8443) for the local k8s
+  # redeploy path. Created by `minikube start --driver=docker`. Each airflow
+  # service pins a static IP in .10-.14 on this net (see per-service `networks:`)
+  # so none ever leases minikube's reserved node IP .2 on a reboot race.
+  minikube:
+    external: true
+
+volumes:
+  postgres-db:
+  mlflow-artifacts:
+  ray-tmp:
+  prom-data:
+  grafana-data:
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-airflow-common: &airflow-common
+  build: ./airflow
+  image: mlops-airflow:latest
+  user: "${AIRFLOW_UID:-5000}:0"
+
+  # NOTE: Airflow is pure orchestration and never touches the GPU, so it carries
+  # no GPU reservation. GPU device reservations for the services that can use one
+  # (ray-head, ray-worker) live in the additive overlay docker-compose.gpu.yml,
+  # included only on NVIDIA hosts. This keeps the base file bootable on GPU-less
+  # machines (Mac, CPU-only Linux).
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+    # Pinned so every component (scheduler, api-server, dag-processor, triggerer)
+    # shares one [api] secret_key. Without this Airflow auto-generates a random
+    # key per process on each container recreate, which intermittently breaks
+    # cross-component log fetching. Sourced from AIRFLOW_SECRET_KEY in infra/.env.
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    RAY_ADDRESS: ray://ray-head:10001
+    # --- EKS redeploy target for retrain_on_drift's redeploy_inference_api task.
+    # The inference API is the only medi-watch workload on k8s. On a new
+    # @champion this worker runs `aws eks update-kubeconfig` + `kubectl rollout
+    # restart` against the cluster below (awscli + kubectl are baked into the
+    # airflow image). Credentials come from AWS_* below (sourced from infra/.env)
+    # or the read-only ~/.aws mount in volumes. Leave EKS_CLUSTER_NAME / AWS_REGION
+    # empty and the task skips cleanly (no redeploy attempted).
+    EKS_CLUSTER_NAME: ${EKS_CLUSTER_NAME:-}
+    AWS_REGION: ${AWS_REGION:-}
+    AWS_DEFAULT_REGION: ${AWS_REGION:-}
+    K8S_NAMESPACE: ${K8S_NAMESPACE:-medi-watch}
+    INFERENCE_DEPLOYMENT: ${INFERENCE_DEPLOYMENT:-medi-watch-inference}
+    # Local k8s path: when set, redeploy_inference_api targets this kubectl
+    # context (minikube/kind) instead of EKS. KUBECONFIG points at the mounted
+    # config (see volumes below).
+    LOCAL_KUBE_CONTEXT: ${LOCAL_KUBE_CONTEXT:-}
+    KUBECONFIG: /home/airflow/.kube/config
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    # --- Remote CI/CD trigger for the deploy step (retrain_on_drift's
+    # trigger_remote_deploy). When CICD_PROVIDER is set (jenkins|azure|cloudbuild),
+    # the orchestration layer remotely fires the build+deploy job on that CI
+    # system instead of running kubectl inline; redeploy_inference_api then steps
+    # aside. Leave CICD_PROVIDER empty for the direct-kubectl path. Only the
+    # selected provider's keys need values (see helpers/cicd_trigger.py).
+    CICD_PROVIDER: ${CICD_PROVIDER:-}
+    JENKINS_URL: ${JENKINS_URL:-}
+    JENKINS_JOB: ${JENKINS_JOB:-}
+    JENKINS_USER: ${JENKINS_USER:-}
+    JENKINS_API_TOKEN: ${JENKINS_API_TOKEN:-}
+    JENKINS_BUILD_TOKEN: ${JENKINS_BUILD_TOKEN:-}
+    AZURE_DEVOPS_ORG: ${AZURE_DEVOPS_ORG:-}
+    AZURE_DEVOPS_PROJECT: ${AZURE_DEVOPS_PROJECT:-}
+    AZURE_PIPELINE_ID: ${AZURE_PIPELINE_ID:-}
+    AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT:-}
+    GCP_PROJECT: ${GCP_PROJECT:-}
+    GCB_TRIGGER: ${GCB_TRIGGER:-}
+    GOOGLE_OAUTH_TOKEN: ${GOOGLE_OAUTH_TOKEN:-}
+    # /workspace holds the bind-mounted helpers/, pipeline/, data/ trees.
+    # Put it on PYTHONPATH so DAG tasks can `from helpers.x import y`.
+    # Otherwise they would have to monkey with sys.path inline or
+    # duplicate the algorithms in the DAG body, the shape this layout
+    # eliminates.
+    PYTHONPATH: /workspace
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/logs:/opt/airflow/logs
+    - ../data:/workspace/data
+    - ../helpers:/workspace/helpers:ro
+    - ../pipeline:/workspace/pipeline
+    # 02_data_cleaning.ipynb reads./orig_dataset/diabetic_data.csv relative
+    # to /workspace/pipeline, so the raw upstream dataset must be visible.
+    # Mounted read-only so notebooks never mutate the canonical source.
+    - ../orig_dataset:/workspace/orig_dataset:ro
+    # AWS credentials for the EKS redeploy task. Read-only and optional. If you
+    # pass creds via AWS_* env vars instead, $HOME/.aws may not exist on the host
+    # and Docker will create an empty dir, which is harmless. Comment out if you
+    # rely solely on the AWS_* env vars above.
+    - ${HOME}/.aws:/home/airflow/.aws:ro
+    # Local minikube kubeconfig (embedded certs) so kubectl in the worker can
+    # reach the cluster for the redeploy_inference_api task. KUBECONFIG above
+    # points here. The file is host-generated and gitignored (it holds certs).
+    - ./airflow/kubeconfig:/home/airflow/.kube/config:ro
+  # Default for any airflow service that doesn't override; in practice every one
+  # overrides `networks:` with a static minikube IP (.10-.14) to keep .2 free.
+  networks: [mlops-net, minikube]
+  logging: *default-logging
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+
+  # ============================================================================
+  # ORCHESTRATION
+  # ----------------------------------------------------------------------------
+  # Core MLOps stack: Postgres, Airflow, MLflow, Ray, Prometheus + Grafana, and
+  # the production inference API. Boots with a plain `docker compose up -d`:
+  # none of these services are profile-gated.
+  # ============================================================================
+
+  # -------- shared postgres (airflow + mlflow logical DBs) --------
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    command: ["postgres", "-p", "5432"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPORT: "5432"
+    volumes:
+      - postgres-db:/var/lib/postgresql
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks: [mlops-net]
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # -------- airflow 3 (api-server + scheduler + dag-processor + triggerer) --------
+  airflow-init:
+    <<: *airflow-common
+    # Pin a static IP on minikube's network (subnet 192.168.49.0/24) so no
+    # airflow service ever leases minikube's reserved node IP 192.168.49.2.
+    # These containers carry `restart: unless-stopped`, so on a host reboot the
+    # Docker daemon restarts them and reconnects them to minikube's persistent
+    # external network FIRST-COME, while minikube itself (restart: no) stays
+    # down — letting one of them grab .2 and break `minikube start` with
+    # "Address already in use". Pinning every airflow service to .10-.14 keeps
+    # .2 free regardless of boot order. NOTE: a per-service `networks:` fully
+    # overrides the x-airflow-common anchor's value, so mlops-net is relisted.
+    networks:
+      mlops-net: {}
+      minikube:
+        ipv4_address: 192.168.49.10
+    # Refuse to start when AIRFLOW_ADMIN_PASSWORD is still the placeholder
+    # 'admin' from .env.example. Airflow here owns the retraining DAG that
+    # swaps the production @champion model, so leaving the default in place
+    # is a deploy-time bug, not a warning. Substitution happens at
+    # docker-compose parse time, so the value is whatever the host shell
+    # (or .env file) resolves for the variable.
+    command:
+      - bash
+      - -c
+      - |
+        if [ "${AIRFLOW_ADMIN_PASSWORD:-admin}" = "admin" ]; then
+          echo "ERROR: AIRFLOW_ADMIN_PASSWORD is still the placeholder 'admin'." >&2
+          echo "       Set a strong password in infra/.env before bringing the stack up." >&2
+          exit 1
+        fi
+        airflow db migrate
+    restart: "no"
+
+  airflow-api-server:
+    <<: *airflow-common
+    # Static minikube IP — keeps .2 free for minikube's node (see airflow-init).
+    networks:
+      mlops-net: {}
+      minikube:
+        ipv4_address: 192.168.49.11
+    command: api-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    # Static minikube IP — keeps .2 free for minikube's node (see airflow-init).
+    networks:
+      mlops-net: {}
+      minikube:
+        ipv4_address: 192.168.49.12
+    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    # Static minikube IP — keeps .2 free for minikube's node (see airflow-init).
+    networks:
+      mlops-net: {}
+      minikube:
+        ipv4_address: 192.168.49.13
+    command: dag-processor
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type DagProcessorJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-triggerer:
+    <<: *airflow-common
+    # Static minikube IP — keeps .2 free for minikube's node (see airflow-init).
+    networks:
+      mlops-net: {}
+      minikube:
+        ipv4_address: 192.168.49.14
+    command: triggerer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type TriggererJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # -------- mlflow --------
+  mlflow:
+    build: ./mlflow
+    image: mlops-mlflow:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MLFLOW_DB: mlflow
+      ARTIFACT_ROOT: /mlflow/artifacts
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    ports:
+      - "5000:5000"
+    networks: [mlops-net]
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:5000/health\")'"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # -------- ray cluster --------
+  ray-head:
+    build: ./ray
+    image: mlops-ray:latest
+    restart: unless-stopped
+    # --memory: 20 GB logical budget that the Ray scheduler hands out to tasks.
+    # --object-store-memory: 4 GB Plasma store for ray.put / shared arrays.
+    # The host-level OOM monitor is disabled below via RAY_memory_monitor_refresh_ms=0
+    # because it reads the *host's* /proc/meminfo (not the container cgroup) and
+    # was preempting 0.38 GB tasks whenever the host was busy.
+    command: >
+      bash -c "ray start --head --port=6379 --dashboard-host=0.0.0.0
+      --dashboard-port=8265 --ray-client-server-port=10001
+      --metrics-export-port=8090
+      --memory=21474836480 --object-store-memory=4294967296
+      --block"
+    ports:
+      - "8265:8265"
+      - "10001:10001"
+    shm_size: "2gb"
+    cap_add:
+      - SYS_PTRACE
+    volumes:
+      - ray-tmp:/tmp/ray
+    networks: [mlops-net]
+    logging: *default-logging
+    # GPU reservation (if any) is supplied by docker-compose.gpu.yml on NVIDIA
+    # hosts. Ray runs CPU-only without it, which suffices for local dev on a Mac.
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      RAY_PROMETHEUS_HOST: http://prometheus:9090
+      RAY_PROMETHEUS_NAME: Prometheus
+      RAY_GRAFANA_HOST: http://grafana:3000
+      RAY_GRAFANA_IFRAME_HOST: http://${HOST_IP:-127.0.0.1}:3003
+      # Disable the host-level OOM monitor entirely. It reads the host's
+      # /proc/meminfo, not the container cgroup, so on a busy 121 GB host
+      # (~115 GB used by Jupyter/OS/etc.) it kills 0.38 GB Ray tasks instantly.
+      # Ray's per-task budget is now enforced by `--memory=20 GB` on `ray start`
+      # plus the `RAY_PER_TRIAL_MEMORY_GB` env var nb8 reads when set.
+      RAY_memory_monitor_refresh_ms: "0"
+      RAY_memory_usage_threshold: "0.99"
+    healthcheck:
+      test: ["CMD-SHELL", "ray status >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  ray-worker:
+    build: ./ray
+    image: mlops-ray:latest
+    restart: unless-stopped
+    command: >
+      bash -c "ray start --address=ray-head:6379
+      --metrics-export-port=8090
+      --memory=21474836480 --object-store-memory=4294967296
+      --block"
+    depends_on:
+      ray-head:
+        condition: service_healthy
+    shm_size: "2gb"
+    cap_add:
+      - SYS_PTRACE
+    networks: [mlops-net]
+    logging: *default-logging
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      RAY_memory_monitor_refresh_ms: "0"
+      RAY_memory_usage_threshold: "0.99"
+    healthcheck:
+      test: ["CMD-SHELL", "ray status >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 2
+      # GPU reservation supplied by docker-compose.gpu.yml on NVIDIA hosts.
+
+  # -------- prometheus + grafana for ray metrics --------
+  prometheus:
+    image: prom/prometheus:v3.11.2
+    restart: unless-stopped
+    command:
+      # Local prometheus.yml owns the scrape graph so the inference series
+      # survive Ray session restarts. Ray's auto-generated targets are still
+      # picked up via the file_sd_configs entry inside that file.
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    user: "0:0"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ray-tmp:/tmp/ray:ro
+      - prom-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [mlops-net]
+    logging: *default-logging
+    depends_on:
+      ray-head:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/ready >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  grafana:
+    image: grafana/grafana:13.0.1
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      # Switch provisioning root from Ray's session
+      # path to our checked-in dir so the medi-watch model-KPIs dashboard
+      # is autoloaded. Ray's session dashboards are still picked up via the
+      # `ray-runtime` provider in provisioning/dashboards/dashboards.yaml,
+      # which reads from /tmp/ray/session_latest/metrics/grafana/dashboards.
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      # Server-side PNG rendering via the grafana-image-renderer sidecar below.
+      # Enables the /render endpoint (panel + dashboard screenshots) used to
+      # export monitoring artifacts. CALLBACK_URL is how the renderer reaches
+      # Grafana back over the compose network.
+      GF_RENDERING_SERVER_URL: http://grafana-image-renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
+      # Grafana 13 refuses to boot with a remote renderer unless this is changed
+      # from its default. Shared secret between Grafana and the renderer sidecar
+      # (matches AUTH_TOKEN on grafana-image-renderer). Local/dev value.
+      GF_RENDERING_RENDERER_TOKEN: ${GF_RENDERING_RENDERER_TOKEN:-mediwatch-render-token}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ray-tmp:/tmp/ray:ro
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3003:3000"
+    networks: [mlops-net]
+    logging: *default-logging
+    depends_on:
+      ray-head:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # -------- grafana-image-renderer: server-side PNG rendering for /render --------
+  # Headless-Chromium sidecar Grafana calls to rasterise panels/dashboards to PNG
+  # (used to export monitoring screenshots). No published port: only Grafana
+  # reaches it, over the compose network at :8081.
+  grafana-image-renderer:
+    image: grafana/grafana-image-renderer:3.11.5
+    restart: unless-stopped
+    environment:
+      ENABLE_METRICS: "false"
+      # Must match GF_RENDERING_RENDERER_TOKEN on the grafana service.
+      AUTH_TOKEN: ${GF_RENDERING_RENDERER_TOKEN:-mediwatch-render-token}
+    networks: [mlops-net]
+    logging: *default-logging
+
+  # -------- inference-api: production REST endpoint for the @champion model --------
+
+  inference-api:
+    # Context is the repo root so the image can COPY helpers/model_loading.py
+    # (the flavor loader shared with the retrain DAG). Kept lean by ../.dockerignore.
+    build:
+      context: ..
+      dockerfile: infra/inference-api/Dockerfile
+    image: mlops-inference-api:latest
+    restart: unless-stopped
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: medi-watch-readmission
+      MODEL_ALIAS: champion
+    ports:
+      - "8002:8002"
+    networks: [mlops-net]
+    logging: *default-logging
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8002/healthz\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  # -------- driftly: on-demand model-drift dashboard (Wasserstein/PSI/KL) --------
+  # A standalone React + FastAPI surface that computes drift live between the
+  # champion's training reference (data/features.csv) and a chosen current batch
+  # (data/incoming/*.csv or an upload). Self-contained: no MLflow dependency.
+
+  driftly-api:
+    # Repo-root context so the image can COPY the helpers slice (drift_sim +
+    # constants) it imports, exactly like inference-api. Kept lean by ../.dockerignore.
+    build:
+      context: ..
+      dockerfile: infra/driftly/backend/Dockerfile
+    image: mlops-driftly-api:latest
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      MEDIWATCH_DATA_DIR: /workspace/data
+      # Run history lands in the shared mediwatch Postgres DB (the single data
+      # seam helpers/db.py defines), not a side SQLite file.
+      MEDIWATCH_DB_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mediwatch
+      # Wasserstein/KL drift bands (PSI reuses the pipeline's 0.1/0.2 cutoffs).
+      # Override per-host in infra/.env if these need tuning.
+      DRIFTLY_WASSERSTEIN_WARN: ${DRIFTLY_WASSERSTEIN_WARN:-0.10}
+      DRIFTLY_WASSERSTEIN_ALERT: ${DRIFTLY_WASSERSTEIN_ALERT:-0.25}
+      DRIFTLY_KL_WARN: ${DRIFTLY_KL_WARN:-0.10}
+      DRIFTLY_KL_ALERT: ${DRIFTLY_KL_ALERT:-0.25}
+      # Simulator -> Airflow trigger. driftly-api is on mlops-net, so it reaches
+      # the api-server by service name. Unset AIRFLOW_API_URL disables only the
+      # optional "trigger the pipeline" step (injection still writes current.csv).
+      AIRFLOW_API_URL: http://airflow-api-server:8080/api/v2
+      AIRFLOW_API_USER: ${AIRFLOW_ADMIN_USER:-admin}
+      AIRFLOW_API_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-}
+      AIRFLOW_UI_URL: ${AIRFLOW_UI_URL:-http://localhost:8080}
+    ports:
+      - "8003:8003"
+    volumes:
+      # The shared data tree: features.csv (reference) + incoming/ batches.
+      # Run history lives in the mediwatch Postgres DB, not under data/driftly/.
+      - ../data:/workspace/data
+    networks: [mlops-net]
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8003/api/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  driftly-web:
+    # nginx serves the built SPA and reverse-proxies /api -> driftly-api (so the
+    # browser is same-origin and needs no CORS). Context is the frontend dir.
+    build:
+      context: ./driftly/frontend
+      dockerfile: Dockerfile
+    image: mlops-driftly-web:latest
+    restart: unless-stopped
+    ports:
+      - "3004:80"
+    networks: [mlops-net]
+    logging: *default-logging
+    depends_on:
+      driftly-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/ -o /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

@@ -1,0 +1,38 @@
+# ============================================================================
+# GPU overlay: additive NVIDIA device reservations.
+# ----------------------------------------------------------------------------
+# This file is MERGED on top of docker-compose.yml ONLY on hosts with a working
+# NVIDIA stack (driver + nvidia-container-toolkit). It re-attaches the GPU
+# device reservations that the base file deliberately omits so the base stays
+# bootable on GPU-less machines (Mac, CPU-only Linux).
+#
+# mediwatch.sh detects the GPU (OS_KIND == linux && nvidia-smi works) and, when
+# present, exports:
+#     COMPOSE_FILE="docker-compose.yml:docker-compose.gpu.yml"
+# so every `docker compose ...` call transparently includes this overlay. On a
+# Mac the overlay is left out and the stack runs CPU-only.
+#
+# Manual use (when you know you have a GPU):
+#     docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# ============================================================================
+
+services:
+
+  # Ray runs CPU-only without these. The reservation exposes host GPUs to
+  # Ray tasks (e.g. hyperparameter tuning) when they exist.
+  ray-head:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+
+  ray-worker:
+    deploy:
+      # replicas is already set in the base file. Compose merges this in.
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
